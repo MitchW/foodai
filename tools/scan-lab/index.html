@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fud AI Scan Lab — image-only accuracy harness</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --line: #e3e6ea;
+    --ink: #14171a;
+    --muted: #666d75;
+    --accent: #17a673;
+    --accent-ink: #ffffff;
+    --warn: #b3541e;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1214;
+      --card: #171b1e;
+      --line: #2a3034;
+      --ink: #e8eaec;
+      --muted: #9aa2a9;
+      --accent: #23c88b;
+      --accent-ink: #07120d;
+      --warn: #e0995f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px 16px 64px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 780px;
+    margin-inline: auto;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 10px; letter-spacing: .01em; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+  input, select, textarea, button {
+    font: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 10px;
+    width: 100%;
+  }
+  input[type=file] { padding: 7px; }
+  button {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 160px; }
+  .capture-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .warn { color: var(--warn); }
+  #preview { width: 100%; max-height: 300px; object-fit: contain; border-radius: 8px; display: none; background: var(--bg); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .big { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .macros { display: flex; gap: 16px; margin: 8px 0 12px; font-variant-numeric: tabular-nums; }
+  .macros div { font-size: 13px; color: var(--muted); }
+  .macros b { display: block; font-size: 17px; color: var(--ink); }
+  pre {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 0;
+  }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  .chk { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .chk input { width: auto; flex: none; margin-top: 3px; }
+  .chk span { color: var(--muted); }
+  .chk.done span { text-decoration: line-through; opacity: .55; }
+  .pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+  .status { font-size: 13px; margin-top: 10px; min-height: 20px; }
+  .nutgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px 14px; font-size: 12px; }
+  .nutgrid div { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--line); padding: 2px 0; }
+  .nutgrid span:first-child { color: var(--muted); }
+  .nutgrid span:last-child { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<h1>Fud AI Scan Lab</h1>
+<p class="sub">
+  Runs <strong>this repo's exact food-image prompt and pipeline</strong> against a photo, in the browser.
+  Built to answer one question: <em>with no context, just an image, how accurate is it and what can it actually scan?</em>
+  Log Bitebro's answer and the true value beside each scan, then export the whole comparison as CSV.
+</p>
+
+<div class="card">
+  <h2>1 · AI provider (bring your own key)</h2>
+  <div class="row">
+    <div>
+      <label for="provider">Provider</label>
+      <select id="provider">
+        <option value="gemini">Google Gemini</option>
+        <option value="anthropic">Anthropic Claude</option>
+        <option value="openai">OpenAI</option>
+      </select>
+    </div>
+    <div>
+      <label for="model">Model</label>
+      <input id="model" placeholder="gemini-3.5-flash-lite">
+    </div>
+  </div>
+  <label for="key">API key</label>
+  <input id="key" type="password" placeholder="AIza..." autocomplete="off">
+  <p class="hint">
+    Stored only in this browser's <code>localStorage</code> and sent straight to the provider — nothing else sees it.
+    Still: this is a local test harness, so use a <strong>throwaway/limited key</strong>, not a production one.
+    <span class="warn">Gemini is the most reliable choice from a browser; OpenAI and Anthropic may be blocked by CORS depending on your setup.</span>
+  </p>
+  <p class="hint">Model presets in the app: <code>gemini-3.5-flash-lite</code> (the app's own default — cheapest), <code>gemini-3.5-flash</code>, <code>gemini-3.1-pro-preview</code>, <code>gpt-5.4-mini</code>, <code>claude-sonnet-5</code>. Swap models and re-scan the same photo to see how much of "accuracy" is really just model choice.</p>
+</div>
+
+<div class="card">
+  <h2>2 · Snap or pick a photo</h2>
+  <div class="capture-row">
+    <button class="ghost" id="btnCam">📷 Take photo</button>
+    <button class="ghost" id="btnLib">🖼️ Choose photo</button>
+  </div>
+  <input id="fileCam" type="file" accept="image/*" capture="environment" hidden>
+  <input id="fileLib" type="file" accept="image/*" hidden>
+  <p class="hint">Downscaled to 1600px longest side at JPEG quality 0.8 — identical to <code>encodedJPEGData</code> in the iOS app, so results match what the shipped app would send.</p>
+
+  <label for="mode">Prompt (verbatim from this repo)</label>
+  <select id="mode">
+    <option value="food">analyzeFood(image:) — "Analyze this food image"</option>
+    <option value="auto">autoAnalyze(image:) — food photo OR nutrition label</option>
+  </select>
+
+  <label for="category">Test category (for the CSV)</label>
+  <input id="category" placeholder="e.g. cocktail in clear glass, mixed curry plate, coffee with milk">
+
+  <img id="preview" alt="Selected photo preview">
+  <div style="margin-top:10px"><button id="btnScan" disabled>Analyze image</button></div>
+  <div class="status" id="status"></div>
+</div>
+
+<div class="card" id="resultCard" style="display:none">
+  <h2>3 · Result <span class="pill" id="pillMeta"></span></h2>
+  <div id="resName" style="font-size:16px;font-weight:600;margin-bottom:2px"></div>
+  <div class="big"><span id="resKcal">–</span> <span style="font-size:14px;font-weight:500;color:var(--muted)">kcal</span></div>
+  <div class="macros">
+    <div>Protein<b id="resP">–</b></div>
+    <div>Carbs<b id="resC">–</b></div>
+    <div>Fat<b id="resF">–</b></div>
+    <div>Est. weight<b id="resG">–</b></div>
+  </div>
+  <div id="resUnits" class="hint"></div>
+
+  <details open>
+    <summary>Detailed nutrients returned (blank = model declined to estimate)</summary>
+    <div class="nutgrid" id="resNut" style="margin-top:8px"></div>
+  </details>
+  <details>
+    <summary>Raw model response</summary>
+    <pre id="resRaw"></pre>
+  </details>
+  <details>
+    <summary>Exact prompt that was sent</summary>
+    <pre id="resPrompt"></pre>
+  </details>
+
+  <label for="bbKcal">Bitebro's answer for this same photo (kcal / protein g)</label>
+  <div class="row">
+    <input id="bbKcal" type="number" placeholder="Bitebro kcal">
+    <input id="bbProt" type="number" step="0.1" placeholder="Bitebro protein g">
+  </div>
+  <label for="truthKcal">Ground truth if you know it (label, scale, recipe)</label>
+  <div class="row">
+    <input id="truthKcal" type="number" placeholder="True kcal">
+    <input id="truthProt" type="number" step="0.1" placeholder="True protein g">
+  </div>
+  <label for="notes">Notes — did it identify the right food? miss an ingredient? refuse?</label>
+  <textarea id="notes" rows="2" placeholder="e.g. called it 'iced latte', missed the whipped cream entirely"></textarea>
+  <div style="margin-top:10px"><button id="btnSave">Save to comparison log</button></div>
+</div>
+
+<div class="card">
+  <h2>Range checklist — the cases that actually separate these apps</h2>
+  <p class="hint" style="margin-top:0">Image only, no typed context. Tick them off as you scan both apps. The bottom half is where photo-only calorie estimation generally breaks down.</p>
+  <div id="checklist"></div>
+</div>
+
+<div class="card">
+  <h2>Comparison log <span class="pill" id="logCount">0 scans</span></h2>
+  <div class="scroll"><table id="logTable">
+    <thead><tr>
+      <th>Category</th><th>Model</th><th>Name</th>
+      <th class="num">kcal</th><th class="num">Bitebro</th><th class="num">True</th>
+      <th class="num">Err%</th><th>Notes</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table></div>
+  <div class="row" style="margin-top:12px">
+    <button class="ghost" id="btnCsv">Export CSV</button>
+    <button class="ghost" id="btnClear">Clear log</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Today's running total <span class="pill" id="dayDate"></span></h2>
+  <div class="big"><span id="dayKcal">0</span> <span style="font-size:14px;font-weight:500;color:var(--muted)">kcal</span></div>
+  <div class="macros">
+    <div>Protein<b id="dayP">0 g</b></div>
+    <div>Carbs<b id="dayC">0 g</b></div>
+    <div>Fat<b id="dayF">0 g</b></div>
+    <div>Items<b id="dayN">0</b></div>
+  </div>
+  <p class="hint">Every saved scan adds to today. This is a harness, not the app — the real app writes to Apple Health / Health Connect and keeps history locally.</p>
+</div>
+
+<script>
+"use strict";
+
+/* ---------------------------------------------------------------------------
+   Prompts copied verbatim from the shipped app so this harness measures the
+   app's real accuracy, not a rewritten approximation.
+   Source: ios/calorietracker/Services/GeminiService.swift
+           android/.../services/ai/FoodAnalysisService.kt
+   --------------------------------------------------------------------------- */
+
+const SHAPE = '{"name":"...","calories":0,"protein":0.0,"carbs":0.0,"fat":0.0,"serving_size_grams":0.0,"sugar":0.0,"added_sugar":0.0,"fiber":0.0,"saturated_fat":0.0,"monounsaturated_fat":0.0,"polyunsaturated_fat":0.0,"trans_fat":0.0,"cholesterol":0.0,"sodium":0.0,"potassium":0.0,"calcium":0.0,"iron":0.0,"magnesium":0.0,"zinc":0.0,"vitamin_a":0.0,"vitamin_c":0.0,"vitamin_d":0.0,"vitamin_b12":0.0,"vitamin_e":0.0,"vitamin_k":0.0,"folate":0.0,"omega_3":0.0,"unit_options":[]}';
+
+const UNITS = "Calories are integers. Protein/carbs/fat are decimal gram values when needed. serving_size_grams is the estimated weight in grams. Nutrients are numbers: sugar/fiber/fats/omega_3 in grams; cholesterol/sodium/potassium/calcium/iron/magnesium/zinc/vitamin_c/vitamin_e in milligrams; vitamin_a/vitamin_d/vitamin_b12/vitamin_k/folate in micrograms.";
+
+const UNIT_OPTS_FOOD = 'unit_options is required for obvious non-gram units visible in the food. Use slice/piece for pizza, cake, bread, cookies, fruit pieces, etc.; use ml/cup/fl oz for drinks, milk, soup, smoothies, sauces, etc.; use tbsp/tsp for spooned foods; use can/packet when packaged. Its quantity must describe the whole analyzed amount, not always 1. For a whole or mostly-whole divisible food like cake, pie, or pizza, count the visible pieces/slices and derive grams_per_unit from serving_size_grams / quantity. If N slices are visible, return quantity N. Use quantity 1 only when a single piece/slice is actually the analyzed portion. Use [] only when no non-gram unit is apparent. Do not include g/grams in unit_options.';
+
+const PROMPTS = {
+  food: [
+    "Analyze this food image. Identify the food and estimate its nutritional content.",
+    "",
+    "Respond ONLY with a JSON object in this exact format, no other text:",
+    SHAPE,
+    "",
+    UNITS,
+    "The [] in unit_options above is only a JSON shape placeholder; replace it with options when a non-gram unit is obvious.",
+    UNIT_OPTS_FOOD,
+    "Give your best estimate for the visible food amount shown in the image. For whole/mostly-whole cakes, pizzas, pies, loaves, or similar foods, estimate the total visible item/remaining item weight rather than defaulting to one slice. Use null for any nutrient you cannot estimate."
+  ].join("\n"),
+
+  auto: [
+    "Analyze this image. It could be either a photo of food OR a nutrition facts label.",
+    "",
+    "If it's a food photo: identify the food and estimate nutritional content for the serving shown.",
+    "If it's a nutrition label: read the values and calculate for one serving size as listed on the label.",
+    "",
+    "Respond ONLY with JSON:",
+    SHAPE,
+    UNITS,
+    "The [] in unit_options above is only a JSON shape placeholder; replace it with options when a non-gram unit is obvious.",
+    UNIT_OPTS_FOOD.replace("visible in the food.", "visible in the image or label."),
+    "Use null for any nutrient you cannot estimate."
+  ].join("\n")
+};
+
+const DEFAULT_MODELS = {
+  gemini: "gemini-3.5-flash-lite",
+  anthropic: "claude-sonnet-5",
+  openai: "gpt-5.4-mini"
+};
+
+const NUTRIENTS = [
+  ["sugar","g"],["added_sugar","g"],["fiber","g"],["saturated_fat","g"],
+  ["monounsaturated_fat","g"],["polyunsaturated_fat","g"],["trans_fat","g"],
+  ["cholesterol","mg"],["sodium","mg"],["potassium","mg"],["calcium","mg"],
+  ["iron","mg"],["magnesium","mg"],["zinc","mg"],["vitamin_c","mg"],["vitamin_e","mg"],
+  ["vitamin_a","µg"],["vitamin_d","µg"],["vitamin_b12","µg"],["vitamin_k","µg"],
+  ["folate","µg"],["omega_3","g"]
+];
+
+const CHECKLIST = [
+  "Single plain food on a plain plate (grilled chicken breast)",
+  "Packaged snack, front of pack visible (branded bar or crisps)",
+  "Nutrition facts label, close up — use the auto prompt",
+  "Barcode only, no food visible (app has an Open Food Facts path, no AI needed)",
+  "Whole pizza / whole cake — does it price the whole thing or one slice?",
+  "Restaurant plate with 4+ components (protein, starch, veg, sauce)",
+  "Water in a glass — should be ~0 kcal, not 'juice'",
+  "Black coffee vs latte vs latte with syrup (same cup, different drinks)",
+  "Soft drink: full sugar vs diet, poured into an identical glass",
+  "Beer in an opaque pint glass — style and ABV are not visible",
+  "Cocktail in a clear glass — spirit quantity is invisible",
+  "Smoothie / protein shake in an opaque shaker (contents unknowable)",
+  "Soup or curry — hidden cream, oil, and ghee",
+  "Salad with dressing already tossed through it",
+  "Fried vs grilled version of the same food, photographed the same way",
+  "A regional dish outside US/UK cuisine (biryani, pho, feijoada, injera)",
+  "Half-eaten plate — does it estimate what's left or a full serving?",
+  "Same food, two portion sizes, no size reference in frame",
+  "Same photo scanned twice, back to back (run-to-run consistency)",
+  "Not-food image (a car, a pet) — does it refuse or hallucinate a meal?"
+];
+
+/* --------------------------- persistence --------------------------- */
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+
+const $ = id => document.getElementById(id);
+const providerEl = $("provider"), modelEl = $("model"), keyEl = $("key");
+
+/* --------------------------- provider config --------------------------- */
+function loadProviderConfig() {
+  const p = providerEl.value;
+  const cfg = LS.get("scanlab.cfg", {});
+  modelEl.value = (cfg[p] && cfg[p].model) || DEFAULT_MODELS[p];
+  keyEl.value = (cfg[p] && cfg[p].key) || "";
+  keyEl.placeholder = { gemini: "AIza...", anthropic: "sk-ant-...", openai: "sk-..." }[p];
+}
+function saveProviderConfig() {
+  const cfg = LS.get("scanlab.cfg", {});
+  cfg[providerEl.value] = { model: modelEl.value.trim(), key: keyEl.value.trim() };
+  LS.set("scanlab.cfg", cfg);
+}
+providerEl.addEventListener("change", loadProviderConfig);
+modelEl.addEventListener("input", saveProviderConfig);
+keyEl.addEventListener("input", saveProviderConfig);
+loadProviderConfig();
+
+/* --------------------------- image handling --------------------------- */
+let currentJpegB64 = null;
+let lastResult = null;
+
+$("btnCam").addEventListener("click", () => $("fileCam").click());
+$("btnLib").addEventListener("click", () => $("fileLib").click());
+$("fileCam").addEventListener("change", e => handleFile(e.target.files[0]));
+$("fileLib").addEventListener("change", e => handleFile(e.target.files[0]));
+
+// Mirrors GeminiService.encodedJPEGData(for:maxDimension:) — 1600px cap, quality 0.8.
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1600;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      currentJpegB64 = dataUrl.split(",")[1];
+      const prev = $("preview");
+      prev.src = dataUrl;
+      prev.style.display = "block";
+      $("btnScan").disabled = false;
+      setStatus(`Ready — ${w}×${h}, ${Math.round(currentJpegB64.length * 0.75 / 1024)} KB JPEG.`);
+    };
+    img.onerror = () => setStatus("Could not decode that image.", true);
+    img.src = reader.result;
+  };
+  reader.onerror = () => setStatus("Could not read that file.", true);
+  reader.readAsDataURL(file);
+}
+
+function setStatus(msg, isErr) {
+  const el = $("status");
+  el.textContent = msg;
+  el.className = "status" + (isErr ? " warn" : "");
+}
+
+/* --------------------------- provider calls --------------------------- */
+async function callGemini(model, key, prompt, b64) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: "image/jpeg", data: b64 } }] }],
+      generationConfig: { temperature: 0.4, maxOutputTokens: 2048 }
+    })
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error?.message || `HTTP ${res.status}`);
+  const parts = json.candidates?.[0]?.content?.parts || [];
+  const text = parts.map(p => p.text || "").join("");
+  if (!text) throw new Error("Empty response (finishReason: " + (json.candidates?.[0]?.finishReason || "unknown") + ")");
+  return text;
+}
+
+async function callAnthropic(model, key, prompt, b64) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model, max_tokens: 2048,
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
+        { type: "text", text: prompt }
+      ]}]
+    })
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error?.message || `HTTP ${res.status}`);
+  return (json.content || []).map(c => c.text || "").join("");
+}
+
+async function callOpenAI(model, key, prompt, b64) {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+    body: JSON.stringify({
+      model, max_completion_tokens: 2048,
+      messages: [{ role: "user", content: [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${b64}` } }
+      ]}]
+    })
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error?.message || `HTTP ${res.status}`);
+  return json.choices?.[0]?.message?.content || "";
+}
+
+/* --------------------------- parsing --------------------------- */
+// Mirrors GeminiService.extractJSON / parseFoodAnalysis leniency: strip code
+// fences, then take the outermost brace pair.
+function extractJSON(text) {
+  let t = String(text).trim();
+  t = t.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const start = t.indexOf("{"), end = t.lastIndexOf("}");
+  if (start === -1 || end === -1 || end < start) throw new Error("No JSON object in response");
+  return t.slice(start, end + 1);
+}
+
+function parseAnalysis(text) {
+  const json = JSON.parse(extractJSON(text));
+  // The app hard-requires these five; anything else missing degrades gracefully.
+  const need = ["name", "calories", "protein", "carbs", "fat"];
+  for (const k of need) {
+    if (json[k] === undefined || json[k] === null) {
+      throw new Error(`Missing required field "${k}" — the shipped app rejects this response as invalidResponse`);
+    }
+  }
+  if (json.serving_size_grams === undefined || json.serving_size_grams === null) {
+    json.serving_size_grams = 100; // app's documented fallback
+  }
+  return json;
+}
+
+/* --------------------------- scan --------------------------- */
+$("btnScan").addEventListener("click", async () => {
+  const key = keyEl.value.trim(), model = modelEl.value.trim(), provider = providerEl.value;
+  if (!key) return setStatus("Enter an API key first.", true);
+  if (!model) return setStatus("Enter a model name.", true);
+  if (!currentJpegB64) return setStatus("Pick a photo first.", true);
+
+  const prompt = PROMPTS[$("mode").value];
+  $("btnScan").disabled = true;
+  setStatus(`Analyzing with ${model}…`);
+  const t0 = performance.now();
+
+  try {
+    const fn = { gemini: callGemini, anthropic: callAnthropic, openai: callOpenAI }[provider];
+    const raw = await fn(model, key, prompt, currentJpegB64);
+    const ms = Math.round(performance.now() - t0);
+    const a = parseAnalysis(raw);
+    lastResult = { analysis: a, raw, prompt, model, provider, ms };
+    renderResult(lastResult);
+    setStatus(`Done in ${(ms / 1000).toFixed(1)}s.`);
+  } catch (err) {
+    const ms = Math.round(performance.now() - t0);
+    setStatus(`Failed after ${(ms / 1000).toFixed(1)}s — ${err.message}`, true);
+    $("resultCard").style.display = "block";
+    $("resRaw").textContent = err.stack || err.message;
+  } finally {
+    $("btnScan").disabled = false;
+  }
+});
+
+function renderResult(r) {
+  const a = r.analysis;
+  $("resultCard").style.display = "block";
+  $("pillMeta").textContent = `${r.model} · ${(r.ms / 1000).toFixed(1)}s`;
+  $("resName").textContent = (a.emoji ? a.emoji + " " : "") + a.name;
+  $("resKcal").textContent = Math.round(a.calories);
+  $("resP").textContent = fmt(a.protein) + " g";
+  $("resC").textContent = fmt(a.carbs) + " g";
+  $("resF").textContent = fmt(a.fat) + " g";
+  $("resG").textContent = fmt(a.serving_size_grams) + " g";
+
+  const opts = Array.isArray(a.unit_options) ? a.unit_options : [];
+  $("resUnits").textContent = opts.length
+    ? "Serving units offered: " + opts.map(o =>
+        `${fmt(o.quantity)} × ${o.unit}${o.grams_per_unit ? ` (${fmt(o.grams_per_unit)} g each)` : ""}`
+      ).join(", ")
+    : "No non-gram serving unit offered — grams only.";
+
+  $("resNut").innerHTML = NUTRIENTS.map(([k, u]) => {
+    const v = a[k];
+    const shown = (v === null || v === undefined) ? "—" : fmt(v) + " " + u;
+    return `<div><span>${k.replace(/_/g, " ")}</span><span>${shown}</span></div>`;
+  }).join("");
+
+  $("resRaw").textContent = r.raw;
+  $("resPrompt").textContent = r.prompt;
+  ["bbKcal","bbProt","truthKcal","truthProt","notes"].forEach(id => $(id).value = "");
+}
+
+const fmt = n => (n === null || n === undefined || isNaN(n)) ? "—"
+  : (Math.abs(n) >= 100 ? Math.round(n) : Math.round(n * 10) / 10);
+
+/* --------------------------- log --------------------------- */
+$("btnSave").addEventListener("click", () => {
+  if (!lastResult) return;
+  const a = lastResult.analysis;
+  const truth = numOrNull($("truthKcal").value);
+  const rows = LS.get("scanlab.log", []);
+  rows.push({
+    ts: new Date().toISOString(),
+    category: $("category").value.trim(),
+    mode: $("mode").value,
+    provider: lastResult.provider,
+    model: lastResult.model,
+    ms: lastResult.ms,
+    name: a.name,
+    kcal: Math.round(a.calories),
+    protein: a.protein, carbs: a.carbs, fat: a.fat,
+    grams: a.serving_size_grams,
+    bb_kcal: numOrNull($("bbKcal").value),
+    bb_protein: numOrNull($("bbProt").value),
+    true_kcal: truth,
+    true_protein: numOrNull($("truthProt").value),
+    notes: $("notes").value.trim()
+  });
+  LS.set("scanlab.log", rows);
+  addToDay(a);
+  renderLog(); renderDay();
+  setStatus("Saved to the comparison log and added to today's total.");
+});
+
+const numOrNull = v => (v === "" || v === null) ? null : Number(v);
+
+function renderLog() {
+  const rows = LS.get("scanlab.log", []);
+  $("logCount").textContent = rows.length + (rows.length === 1 ? " scan" : " scans");
+  $("logTable").querySelector("tbody").innerHTML = rows.slice().reverse().map(r => {
+    const err = (r.true_kcal != null && r.true_kcal > 0)
+      ? Math.round(Math.abs(r.kcal - r.true_kcal) / r.true_kcal * 100) + "%"
+      : "—";
+    return `<tr>
+      <td>${esc(r.category) || "—"}</td>
+      <td>${esc(r.model)}</td>
+      <td>${esc(r.name)}</td>
+      <td class="num">${r.kcal}</td>
+      <td class="num">${r.bb_kcal ?? "—"}</td>
+      <td class="num">${r.true_kcal ?? "—"}</td>
+      <td class="num">${err}</td>
+      <td>${esc(r.notes)}</td>
+    </tr>`;
+  }).join("");
+}
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+$("btnCsv").addEventListener("click", () => {
+  const rows = LS.get("scanlab.log", []);
+  if (!rows.length) return setStatus("Nothing logged yet.", true);
+  const cols = ["ts","category","mode","provider","model","ms","name","kcal","protein","carbs","fat","grams","bb_kcal","bb_protein","true_kcal","true_protein","notes"];
+  const csv = [cols.join(",")].concat(rows.map(r =>
+    cols.map(c => {
+      const v = r[c] ?? "";
+      return /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+    }).join(",")
+  )).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "fudai-vs-bitebro.csv"; a.click();
+  URL.revokeObjectURL(url);
+});
+
+$("btnClear").addEventListener("click", () => {
+  if (!confirm("Delete the whole comparison log? This cannot be undone.")) return;
+  LS.set("scanlab.log", []);
+  renderLog();
+});
+
+/* --------------------------- day total --------------------------- */
+const todayKey = () => new Date().toISOString().slice(0, 10);
+
+function addToDay(a) {
+  const d = LS.get("scanlab.day", {});
+  const k = todayKey();
+  const cur = d[k] || { kcal: 0, p: 0, c: 0, f: 0, n: 0 };
+  cur.kcal += Number(a.calories) || 0;
+  cur.p += Number(a.protein) || 0;
+  cur.c += Number(a.carbs) || 0;
+  cur.f += Number(a.fat) || 0;
+  cur.n += 1;
+  d[k] = cur;
+  LS.set("scanlab.day", d);
+}
+
+function renderDay() {
+  const cur = (LS.get("scanlab.day", {})[todayKey()]) || { kcal: 0, p: 0, c: 0, f: 0, n: 0 };
+  $("dayDate").textContent = todayKey();
+  $("dayKcal").textContent = Math.round(cur.kcal);
+  $("dayP").textContent = fmt(cur.p) + " g";
+  $("dayC").textContent = fmt(cur.c) + " g";
+  $("dayF").textContent = fmt(cur.f) + " g";
+  $("dayN").textContent = cur.n;
+}
+
+/* --------------------------- checklist --------------------------- */
+function renderChecklist() {
+  const done = LS.get("scanlab.checklist", {});
+  $("checklist").innerHTML = CHECKLIST.map((t, i) =>
+    `<label class="chk ${done[i] ? "done" : ""}"><input type="checkbox" data-i="${i}" ${done[i] ? "checked" : ""}><span>${esc(t)}</span></label>`
+  ).join("");
+  $("checklist").querySelectorAll("input").forEach(cb => {
+    cb.addEventListener("change", () => {
+      const d = LS.get("scanlab.checklist", {});
+      d[cb.dataset.i] = cb.checked;
+      LS.set("scanlab.checklist", d);
+      renderChecklist();
+    });
+  });
+}
+
+renderLog(); renderDay(); renderChecklist();
+</script>
+</body>
+</html>
