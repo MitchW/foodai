@@ -109,15 +109,46 @@
   .nutgrid div { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--line); padding: 2px 0; }
   .nutgrid span:first-child { color: var(--muted); }
   .nutgrid span:last-child { font-variant-numeric: tabular-nums; }
+
+  /* segmented scan-mode control */
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
+  .seg button {
+    background: transparent; color: var(--muted); font-weight: 600; font-size: 13px;
+    padding: 9px 4px; border-radius: 7px; line-height: 1.25;
+  }
+  .seg button small { display: block; font-weight: 400; font-size: 10px; opacity: .8; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+  .pick { border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 10px; padding: 10px; margin-bottom: 12px; }
+  .pick b { font-size: 15px; }
+
+  .itemrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .itemrow .grow { flex: 1; min-width: 0; }
+  .itemrow .nm { font-weight: 600; font-size: 14px; }
+  .itemrow .meta { font-size: 12px; color: var(--muted); }
+  .itemrow button { width: auto; flex: none; padding: 6px 12px; font-size: 12px; }
+  .over { opacity: .5; }
+  .tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .tag.low { border-color: var(--warn); color: var(--warn); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+  .chips span { font-size: 12px; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--line); background: var(--bg); }
+  .chips span.low { border-style: dashed; color: var(--muted); }
+  .mealcard { border: 1px solid var(--line); border-radius: 10px; padding: 11px; margin-bottom: 10px; }
+  .mealcard h3 { margin: 0 0 4px; font-size: 14px; }
+  .mealcard p { margin: 4px 0; font-size: 12px; color: var(--muted); }
+  .bar { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 6px 0 2px; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar i.over { background: var(--warn); opacity: 1; }
 </style>
 </head>
 <body>
 
 <h1>Fud AI Scan Lab</h1>
 <p class="sub">
-  Runs <strong>this repo's exact food-image prompt and pipeline</strong> against a photo, in the browser.
-  Built to answer one question: <em>with no context, just an image, how accurate is it and what can it actually scan?</em>
-  Log Bitebro's answer and the true value beside each scan, then export the whole comparison as CSV.
+  Snap a <strong>meal</strong>, a <strong>restaurant menu</strong>, or the <strong>inside of your fridge</strong> — all three
+  on your own API key, so the two paid-only features cost you pennies instead of $15/month.
+  The meal path runs <strong>this repo's exact prompt and pipeline</strong>, so it doubles as an accuracy harness:
+  log a competing app's answer and the true value beside each scan, then export the comparison as CSV.
 </p>
 
 <div class="card">
@@ -147,23 +178,33 @@
 </div>
 
 <div class="card">
-  <h2>2 · Snap or pick a photo</h2>
-  <div class="capture-row">
+  <h2>2 · What are you photographing?</h2>
+  <div class="seg" id="seg">
+    <button data-scan="meal" aria-pressed="true">🍽️ Meal<small>calories &amp; macros</small></button>
+    <button data-scan="menu" aria-pressed="false">📋 Menu<small>pick the best dish</small></button>
+    <button data-scan="fridge" aria-pressed="false">🧊 Fridge<small>what can I make?</small></button>
+  </div>
+
+  <div class="capture-row" style="margin-top:12px">
     <button class="ghost" id="btnCam">📷 Take photo</button>
     <button class="ghost" id="btnLib">🖼️ Choose photo</button>
   </div>
   <input id="fileCam" type="file" accept="image/*" capture="environment" hidden>
   <input id="fileLib" type="file" accept="image/*" hidden>
-  <p class="hint">Downscaled to 1600px longest side at JPEG quality 0.8 — identical to <code>encodedJPEGData</code> in the iOS app, so results match what the shipped app would send.</p>
+  <p class="hint">Downscaled to 1600px longest side at JPEG quality 0.8 — identical to <code>encodedJPEGData</code> in the iOS app, so meal results match what the shipped app would send.</p>
 
-  <label for="mode">Prompt (verbatim from this repo)</label>
-  <select id="mode">
-    <option value="food">analyzeFood(image:) — "Analyze this food image"</option>
-    <option value="auto">autoAnalyze(image:) — food photo OR nutrition label</option>
-  </select>
+  <div id="mealOnly">
+    <label for="mode">Prompt (verbatim from this repo)</label>
+    <select id="mode">
+      <option value="food">analyzeFood(image:) — "Analyze this food image"</option>
+      <option value="auto">autoAnalyze(image:) — food photo OR nutrition label</option>
+    </select>
 
-  <label for="category">Test category (for the CSV)</label>
-  <input id="category" placeholder="e.g. cocktail in clear glass, mixed curry plate, coffee with milk">
+    <label for="category">Test category (for the CSV)</label>
+    <input id="category" placeholder="e.g. cocktail in clear glass, mixed curry plate, coffee with milk">
+  </div>
+
+  <p class="hint" id="modeHint"></p>
 
   <img id="preview" alt="Selected photo preview">
   <div style="margin-top:10px"><button id="btnScan" disabled>Analyze image</button></div>
@@ -210,6 +251,31 @@
   <div style="margin-top:10px"><button id="btnSave">Save to comparison log</button></div>
 </div>
 
+<div class="card" id="menuCard" style="display:none">
+  <h2>Menu <span class="pill" id="menuMeta"></span></h2>
+  <div id="menuVenue" style="font-weight:600;margin-bottom:8px"></div>
+  <div id="menuPick"></div>
+  <div id="menuItems"></div>
+  <details>
+    <summary>Raw model response</summary>
+    <pre id="menuRaw"></pre>
+  </details>
+  <p class="hint">Restaurant portions are estimates from a dish name, not from seeing the plate — treat them as "which of these is the better choice", not as exact numbers. Anything tagged <span class="tag low">low</span> was only partly legible.</p>
+</div>
+
+<div class="card" id="fridgeCard" style="display:none">
+  <h2>Fridge <span class="pill" id="fridgeMeta"></span></h2>
+  <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Spotted</div>
+  <div class="chips" id="fridgeItems"></div>
+  <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:12px">Meals you could make</div>
+  <div id="fridgeMeals" style="margin-top:8px"></div>
+  <details>
+    <summary>Raw model response</summary>
+    <pre id="fridgeRaw"></pre>
+  </details>
+  <p class="hint">Dashed chips are low confidence — usually something behind glass, in an opaque tub, or half out of frame. Meals are ranked to fit your remaining calories first, then by protein.</p>
+</div>
+
 <div class="card">
   <h2>Range checklist — the cases that actually separate these apps</h2>
   <p class="hint" style="margin-top:0">Image only, no typed context. Tick them off as you scan both apps. The bottom half is where photo-only calorie estimation generally breaks down.</p>
@@ -233,15 +299,19 @@
 </div>
 
 <div class="card">
-  <h2>Today's running total <span class="pill" id="dayDate"></span></h2>
-  <div class="big"><span id="dayKcal">0</span> <span style="font-size:14px;font-weight:500;color:var(--muted)">kcal</span></div>
+  <h2>Today <span class="pill" id="dayDate"></span></h2>
+  <label for="goal">Daily calorie goal — drives every "fits your remaining calories" recommendation</label>
+  <input id="goal" type="number" placeholder="e.g. 2200">
+  <div class="bar" style="margin-top:12px"><i id="dayBar" style="width:0"></i></div>
+  <div class="big" style="margin-top:6px"><span id="dayKcal">0</span> <span style="font-size:14px;font-weight:500;color:var(--muted)">kcal · <span id="dayRemain">set a goal</span></span></div>
   <div class="macros">
     <div>Protein<b id="dayP">0 g</b></div>
     <div>Carbs<b id="dayC">0 g</b></div>
     <div>Fat<b id="dayF">0 g</b></div>
     <div>Items<b id="dayN">0</b></div>
   </div>
-  <p class="hint">Every saved scan adds to today. This is a harness, not the app — the real app writes to Apple Health / Health Connect and keeps history locally.</p>
+  <div id="dayEntries"></div>
+  <p class="hint">Saved meal scans and anything you log from a menu or fridge result land here. This is a harness, not the app — the real app writes to Apple Health / Health Connect and keeps full history.</p>
 </div>
 
 <script>
@@ -286,6 +356,50 @@ const PROMPTS = {
     UNIT_OPTS_FOOD.replace("visible in the food.", "visible in the image or label."),
     "Use null for any nutrient you cannot estimate."
   ].join("\n")
+};
+
+/* ---------------------------------------------------------------------------
+   Menu and fridge prompts. These are NOT in the shipped app — they are the two
+   features a paid competitor gates behind a subscription, rebuilt here on the
+   same BYOK plumbing. Written in the repo's house style: JSON only, explicit
+   units, explicit instructions not to invent what isn't visible.
+   --------------------------------------------------------------------------- */
+
+const MENU_PROMPT = [
+  "Analyze this photo of a restaurant menu. Read every dish that is legible and estimate the nutrition of each dish as a restaurant would actually serve it.",
+  "",
+  "Respond ONLY with a JSON object in this exact format, no other text:",
+  '{"venue":"...","items":[{"name":"...","section":"...","price":"...","calories":0,"protein":0.0,"carbs":0.0,"fat":0.0,"serving_size_grams":0.0,"confidence":"high","note":"..."}]}',
+  "",
+  "Calories are integers. Protein/carbs/fat are decimal gram values. serving_size_grams is the estimated served weight in grams.",
+  "Read only dishes that are actually legible in the image. Do not invent menu items, prices, or sections that you cannot see. If the venue name is not visible, use null for venue. If a price is not visible, use null for price; otherwise copy it exactly as printed, including its currency symbol.",
+  'confidence must be "high", "medium", or "low". Use "low" when the dish name is partly cut off, blurred, or when the dish could vary enormously depending on preparation.',
+  "section is the menu heading the dish sits under, such as Starters, Mains, Sides, or Desserts. Use null when there is no visible heading.",
+  "Estimate restaurant portions, not home cooking: restaurant servings are typically larger and cooked with substantially more oil, butter, and salt. Where the menu describes the dish, use that description to inform the estimate.",
+  "note is a short phrase, at most 12 words, naming the main thing driving the calorie count — for example \"deep fried, heavy batter\" or \"cream sauce\". Use null when nothing stands out.",
+  "Return every legible dish, even if the list is long. Use null for any value you cannot estimate."
+].join("\n");
+
+const FRIDGE_PROMPT = [
+  "Analyze this photo of food storage — a fridge, freezer, pantry, or cupboard. First inventory what food is visibly present, then suggest meals that could be made from it.",
+  "",
+  "Respond ONLY with a JSON object in this exact format, no other text:",
+  '{"items":[{"name":"...","approx_quantity":"...","confidence":"high"}],"meals":[{"name":"...","uses":["..."],"missing":["..."],"calories":0,"protein":0.0,"carbs":0.0,"fat":0.0,"serving_size_grams":0.0,"steps":"..."}]}',
+  "",
+  "Calories are integers. Protein/carbs/fat are decimal gram values. serving_size_grams is the estimated weight in grams of one serving of the finished meal.",
+  "List only food you can actually see. Do not guess the contents of opaque or closed containers. If a container is opaque but clearly labelled, use the label; otherwise omit it.",
+  'confidence must be "high", "medium", or "low". Use "low" for anything behind glass, partly hidden, blurred, or cut off at the edge of the frame.',
+  "approx_quantity is a short human phrase such as \"about 6\", \"half a block\", \"most of a carton\". Use null when quantity is not judgeable.",
+  "Suggest between 3 and 5 meals, one serving each. Prefer meals that need nothing beyond the visible items plus basic staples — salt, pepper, cooking oil, and water — which you may assume are available and must not list as missing.",
+  "uses lists the visible items each meal consumes. missing lists anything else the meal needs that is not visible and is not a basic staple. Keep missing as short as possible; a meal needing nothing extra has an empty missing array.",
+  "steps is a single sentence of at most 25 words describing how to make it.",
+  "Use null for any value you cannot estimate."
+].join("\n");
+
+const SCAN_MODES = {
+  meal:   { hint: "Runs the shipped app's own prompt. Everything below — the nutrient panel, the comparison log, the range checklist — applies to this mode." },
+  menu:   { hint: "Photograph the menu straight on and get close enough that the dish names are sharp. Small text is the main failure mode; scan one section at a time if the whole board won't read." },
+  fridge: { hint: "Open the door wide and get everything in frame. It can only reason about what it can see — opaque tubs and anything behind the milk are invisible to it." }
 };
 
 const DEFAULT_MODELS = {
@@ -480,6 +594,27 @@ function parseAnalysis(text) {
   return json;
 }
 
+/* --------------------------- scan mode --------------------------- */
+let scanMode = LS.get("scanlab.mode", "meal");
+
+function applyScanMode() {
+  $("seg").querySelectorAll("button").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.scan === scanMode)));
+  $("mealOnly").style.display = scanMode === "meal" ? "" : "none";
+  $("modeHint").textContent = SCAN_MODES[scanMode].hint;
+  $("btnScan").textContent = { meal: "Analyze image", menu: "Read menu", fridge: "See what I can make" }[scanMode];
+  ["resultCard", "menuCard", "fridgeCard"].forEach(id => $(id).style.display = "none");
+  LS.set("scanlab.mode", scanMode);
+}
+
+$("seg").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-scan]");
+  if (!btn) return;
+  scanMode = btn.dataset.scan;
+  applyScanMode();
+  setStatus("");
+});
+
 /* --------------------------- scan --------------------------- */
 $("btnScan").addEventListener("click", async () => {
   const key = keyEl.value.trim(), model = modelEl.value.trim(), provider = providerEl.value;
@@ -487,28 +622,174 @@ $("btnScan").addEventListener("click", async () => {
   if (!model) return setStatus("Enter a model name.", true);
   if (!currentJpegB64) return setStatus("Pick a photo first.", true);
 
-  const prompt = PROMPTS[$("mode").value];
+  const prompt = scanMode === "meal" ? PROMPTS[$("mode").value]
+               : scanMode === "menu" ? MENU_PROMPT
+               : FRIDGE_PROMPT;
+
   $("btnScan").disabled = true;
-  setStatus(`Analyzing with ${model}…`);
+  setStatus(`${scanMode === "meal" ? "Analyzing" : scanMode === "menu" ? "Reading menu" : "Checking the fridge"} with ${model}…`);
   const t0 = performance.now();
 
   try {
     const fn = { gemini: callGemini, anthropic: callAnthropic, openai: callOpenAI }[provider];
     const raw = await fn(model, key, prompt, currentJpegB64);
     const ms = Math.round(performance.now() - t0);
-    const a = parseAnalysis(raw);
-    lastResult = { analysis: a, raw, prompt, model, provider, ms };
-    renderResult(lastResult);
-    setStatus(`Done in ${(ms / 1000).toFixed(1)}s.`);
+
+    if (scanMode === "meal") {
+      const a = parseAnalysis(raw);
+      lastResult = { analysis: a, raw, prompt, model, provider, ms };
+      renderResult(lastResult);
+      setStatus(`Done in ${(ms / 1000).toFixed(1)}s.`);
+    } else if (scanMode === "menu") {
+      const m = parseMenu(raw);
+      renderMenu(m, raw, model, ms);
+      setStatus(`Read ${m.items.length} dish${m.items.length === 1 ? "" : "es"} in ${(ms / 1000).toFixed(1)}s.`);
+    } else {
+      const f = parseFridge(raw);
+      renderFridge(f, raw, model, ms);
+      setStatus(`Found ${f.items.length} item${f.items.length === 1 ? "" : "s"} and ${f.meals.length} meal idea${f.meals.length === 1 ? "" : "s"} in ${(ms / 1000).toFixed(1)}s.`);
+    }
   } catch (err) {
     const ms = Math.round(performance.now() - t0);
     setStatus(`Failed after ${(ms / 1000).toFixed(1)}s — ${err.message}`, true);
-    $("resultCard").style.display = "block";
-    $("resRaw").textContent = err.stack || err.message;
+    const card = { meal: "resultCard", menu: "menuCard", fridge: "fridgeCard" }[scanMode];
+    const pre = { meal: "resRaw", menu: "menuRaw", fridge: "fridgeRaw" }[scanMode];
+    $(card).style.display = "block";
+    $(pre).textContent = err.stack || err.message;
   } finally {
     $("btnScan").disabled = false;
   }
 });
+
+/* --------------------------- menu --------------------------- */
+function parseMenu(text) {
+  const json = JSON.parse(extractJSON(text));
+  const items = (Array.isArray(json.items) ? json.items : [])
+    .filter(it => it && it.name && Number.isFinite(Number(it.calories)));
+  if (!items.length) throw new Error("No legible dishes came back — try a closer or sharper photo, or scan one section at a time");
+  return { venue: json.venue || null, items };
+}
+
+// Deterministic client-side ranking, done locally so it is instant, free, and
+// inspectable. Anything that fits the day's remaining calories outranks
+// anything that doesn't. Within each group we sort by protein *density*
+// (g per kcal) rather than raw protein — otherwise the biggest, richest dish
+// always wins simply for being big, which is the opposite of useful advice.
+// When nothing fits, the ranking flips to least overshoot, because the only
+// sensible suggestion against a blown budget is the smallest thing on offer.
+function proteinDensity(x) {
+  const kcal = Number(x.calories) || 0;
+  const protein = Number(x.protein) || 0;
+  return kcal > 0 ? protein / kcal : 0;
+}
+
+function rankByFit(list, remaining) {
+  const fits = x => remaining == null || Number(x.calories) <= remaining;
+  const anyFits = list.some(fits);
+  return list.slice().sort((a, b) => {
+    if (fits(a) !== fits(b)) return fits(a) ? -1 : 1;
+    if (!anyFits) return (Number(a.calories) || 0) - (Number(b.calories) || 0);
+    const da = proteinDensity(a), db = proteinDensity(b);
+    if (db !== da) return db - da;
+    return (Number(a.calories) || 0) - (Number(b.calories) || 0);
+  });
+}
+
+function renderMenu(m, raw, model, ms) {
+  $("menuCard").style.display = "block";
+  $("menuMeta").textContent = `${model} · ${(ms / 1000).toFixed(1)}s`;
+  $("menuVenue").textContent = m.venue ? m.venue : "";
+  $("menuRaw").textContent = raw;
+
+  const remaining = remainingKcal();
+  const ranked = rankByFit(m.items, remaining);
+  const best = ranked[0];
+  const bestFits = remaining == null || Number(best.calories) <= remaining;
+
+  $("menuPick").innerHTML = `<div class="pick">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">
+      ${remaining == null ? "Most protein per calorie" :
+        bestFits ? `Most protein per calorie within your remaining ${Math.round(remaining)} kcal` :
+        "Nothing here fits your remaining calories — lightest option"}
+    </div>
+    <b>${esc(best.name)}</b>
+    <div class="meta" style="font-size:13px;color:var(--muted)">
+      ${Math.round(best.calories)} kcal · ${fmt(best.protein)} g protein
+      · ${(proteinDensity(best) * 100).toFixed(1)} g per 100 kcal${best.note ? " · " + esc(best.note) : ""}
+    </div>
+  </div>`;
+
+  $("menuItems").innerHTML = ranked.map((it, i) => {
+    const over = remaining != null && Number(it.calories) > remaining;
+    const conf = String(it.confidence || "").toLowerCase();
+    return `<div class="itemrow ${over ? "over" : ""}">
+      <div class="grow">
+        <div class="nm">${esc(it.name)}${conf === "low" ? '<span class="tag low">low</span>' : ""}</div>
+        <div class="meta">
+          ${Math.round(it.calories)} kcal · P ${fmt(it.protein)} · C ${fmt(it.carbs)} · F ${fmt(it.fat)}
+          ${it.section ? " · " + esc(it.section) : ""}${it.price ? " · " + esc(it.price) : ""}
+        </div>
+      </div>
+      <button class="ghost" data-logmenu="${i}">Log</button>
+    </div>`;
+  }).join("");
+
+  $("menuItems").querySelectorAll("button[data-logmenu]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      logEntry(ranked[Number(btn.dataset.logmenu)], "menu");
+      setStatus("Logged to today.");
+    });
+  });
+}
+
+/* --------------------------- fridge --------------------------- */
+function parseFridge(text) {
+  const json = JSON.parse(extractJSON(text));
+  const items = (Array.isArray(json.items) ? json.items : []).filter(i => i && i.name);
+  const meals = (Array.isArray(json.meals) ? json.meals : [])
+    .filter(m => m && m.name && Number.isFinite(Number(m.calories)));
+  if (!items.length && !meals.length) throw new Error("Nothing recognisable came back — try a wider shot with the door fully open");
+  return { items, meals };
+}
+
+function renderFridge(f, raw, model, ms) {
+  $("fridgeCard").style.display = "block";
+  $("fridgeMeta").textContent = `${model} · ${(ms / 1000).toFixed(1)}s`;
+  $("fridgeRaw").textContent = raw;
+
+  $("fridgeItems").innerHTML = f.items.length
+    ? f.items.map(i => {
+        const low = String(i.confidence || "").toLowerCase() === "low";
+        return `<span class="${low ? "low" : ""}">${esc(i.name)}${i.approx_quantity ? " · " + esc(i.approx_quantity) : ""}</span>`;
+      }).join("")
+    : '<span class="low">nothing identifiable</span>';
+
+  const remaining = remainingKcal();
+  const ranked = rankByFit(f.meals, remaining);
+
+  $("fridgeMeals").innerHTML = ranked.length ? ranked.map((m, i) => {
+    const over = remaining != null && Number(m.calories) > remaining;
+    const missing = Array.isArray(m.missing) ? m.missing.filter(Boolean) : [];
+    const uses = Array.isArray(m.uses) ? m.uses.filter(Boolean) : [];
+    return `<div class="mealcard ${over ? "over" : ""}">
+      <h3>${esc(m.name)}${over ? '<span class="tag">over budget</span>' : ""}</h3>
+      <div class="meta" style="font-size:13px">
+        ${Math.round(m.calories)} kcal · P ${fmt(m.protein)} · C ${fmt(m.carbs)} · F ${fmt(m.fat)}
+      </div>
+      ${uses.length ? `<p>Uses: ${esc(uses.join(", "))}</p>` : ""}
+      ${missing.length ? `<p class="warn">Still need: ${esc(missing.join(", "))}</p>` : "<p>Needs nothing extra.</p>"}
+      ${m.steps ? `<p>${esc(m.steps)}</p>` : ""}
+      <button class="ghost" data-logmeal="${i}" style="width:auto;padding:6px 12px;font-size:12px">Log this</button>
+    </div>`;
+  }).join("") : '<p class="hint">No meal ideas came back.</p>';
+
+  $("fridgeMeals").querySelectorAll("button[data-logmeal]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      logEntry(ranked[Number(btn.dataset.logmeal)], "fridge");
+      setStatus("Logged to today.");
+    });
+  });
+}
 
 function renderResult(r) {
   const a = r.analysis;
@@ -566,8 +847,8 @@ $("btnSave").addEventListener("click", () => {
     notes: $("notes").value.trim()
   });
   LS.set("scanlab.log", rows);
-  addToDay(a);
-  renderLog(); renderDay();
+  logEntry(a, "meal");
+  renderLog();
   setStatus("Saved to the comparison log and added to today's total.");
 });
 
@@ -618,29 +899,95 @@ $("btnClear").addEventListener("click", () => {
 });
 
 /* --------------------------- day total --------------------------- */
-const todayKey = () => new Date().toISOString().slice(0, 10);
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
-function addToDay(a) {
-  const d = LS.get("scanlab.day", {});
-  const k = todayKey();
-  const cur = d[k] || { kcal: 0, p: 0, c: 0, f: 0, n: 0 };
-  cur.kcal += Number(a.calories) || 0;
-  cur.p += Number(a.protein) || 0;
-  cur.c += Number(a.carbs) || 0;
-  cur.f += Number(a.fat) || 0;
-  cur.n += 1;
-  d[k] = cur;
-  LS.set("scanlab.day", d);
+const dayEntries = () => (LS.get("scanlab.day", {})[todayKey()] || []);
+
+function dayTotals() {
+  return dayEntries().reduce((t, e) => ({
+    kcal: t.kcal + (Number(e.calories) || 0),
+    p: t.p + (Number(e.protein) || 0),
+    c: t.c + (Number(e.carbs) || 0),
+    f: t.f + (Number(e.fat) || 0),
+    n: t.n + 1
+  }), { kcal: 0, p: 0, c: 0, f: 0, n: 0 });
 }
 
+function remainingKcal() {
+  const goal = Number($("goal").value);
+  if (!goal || goal <= 0) return null;
+  return goal - dayTotals().kcal;
+}
+
+function logEntry(src, source) {
+  const d = LS.get("scanlab.day", {});
+  const k = todayKey();
+  d[k] = (d[k] || []).concat([{
+    name: src.name,
+    calories: Number(src.calories) || 0,
+    protein: Number(src.protein) || 0,
+    carbs: Number(src.carbs) || 0,
+    fat: Number(src.fat) || 0,
+    source,
+    at: new Date().toISOString()
+  }]);
+  LS.set("scanlab.day", d);
+  renderDay();
+}
+
+function removeEntry(idx) {
+  const d = LS.get("scanlab.day", {});
+  const k = todayKey();
+  if (!d[k]) return;
+  d[k].splice(idx, 1);
+  LS.set("scanlab.day", d);
+  renderDay();
+}
+
+$("goal").addEventListener("input", () => {
+  LS.set("scanlab.goal", $("goal").value);
+  renderDay();
+});
+
+const SOURCE_ICON = { meal: "🍽️", menu: "📋", fridge: "🧊" };
+
 function renderDay() {
-  const cur = (LS.get("scanlab.day", {})[todayKey()]) || { kcal: 0, p: 0, c: 0, f: 0, n: 0 };
+  const t = dayTotals();
+  const goal = Number($("goal").value);
   $("dayDate").textContent = todayKey();
-  $("dayKcal").textContent = Math.round(cur.kcal);
-  $("dayP").textContent = fmt(cur.p) + " g";
-  $("dayC").textContent = fmt(cur.c) + " g";
-  $("dayF").textContent = fmt(cur.f) + " g";
-  $("dayN").textContent = cur.n;
+  $("dayKcal").textContent = Math.round(t.kcal);
+  $("dayP").textContent = fmt(t.p) + " g";
+  $("dayC").textContent = fmt(t.c) + " g";
+  $("dayF").textContent = fmt(t.f) + " g";
+  $("dayN").textContent = t.n;
+
+  if (goal > 0) {
+    const left = goal - t.kcal;
+    $("dayRemain").textContent = left >= 0
+      ? `${Math.round(left)} left of ${goal}`
+      : `${Math.round(-left)} over ${goal}`;
+    const bar = $("dayBar");
+    bar.style.width = Math.min(100, (t.kcal / goal) * 100) + "%";
+    bar.className = left < 0 ? "over" : "";
+  } else {
+    $("dayRemain").textContent = "set a goal";
+    $("dayBar").style.width = "0";
+  }
+
+  const entries = dayEntries();
+  $("dayEntries").innerHTML = entries.map((e, i) => `<div class="itemrow">
+    <div class="grow">
+      <div class="nm">${SOURCE_ICON[e.source] || "•"} ${esc(e.name)}</div>
+      <div class="meta">${Math.round(e.calories)} kcal · P ${fmt(e.protein)} · C ${fmt(e.carbs)} · F ${fmt(e.fat)}</div>
+    </div>
+    <button class="ghost" data-del="${i}">Remove</button>
+  </div>`).join("");
+
+  $("dayEntries").querySelectorAll("button[data-del]").forEach(b =>
+    b.addEventListener("click", () => removeEntry(Number(b.dataset.del))));
 }
 
 /* --------------------------- checklist --------------------------- */
@@ -659,6 +1006,8 @@ function renderChecklist() {
   });
 }
 
+$("goal").value = LS.get("scanlab.goal", "") || "";
+applyScanMode();
 renderLog(); renderDay(); renderChecklist();
 </script>
 </body>
