@@ -1,0 +1,15 @@
+{
+  "name": "Scan — calories from a photo",
+  "short_name": "Scan",
+  "description": "Photograph a meal, a menu, or your fridge and get calories and macros.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1214",
+  "theme_color": "#0f1214",
+  "icons": [
+    { "src": "../icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "../icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

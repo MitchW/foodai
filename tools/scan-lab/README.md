@@ -1,6 +1,23 @@
 # Scan Lab — meal, menu, and fridge scanning on your own API key
 
-A single self-contained HTML page with three scan modes:
+Two pages sharing one engine:
+
+| Page | URL | For |
+| --- | --- | --- |
+| **`app/`** | `…/app/` | The phone scanner. Tap, shoot, log. This is the one to add to your home screen. |
+| **`index.html`** | `…/` | The accuracy bench: provider config, raw responses, comparison log, CSV export. |
+
+Both load `scanner.js`, which holds the prompts, the provider calls, the parsing, and the
+ranking — so the accuracy the bench measures is exactly the accuracy the app delivers.
+There is no second copy of a prompt to drift out of sync.
+
+The daily goal defaults to **1500 kcal** (`Scan.DEFAULT_GOAL_KCAL`), editable under the
+gear. Everything is kcal; nothing in this tool is kJ.
+
+Both pages share one origin, so they share one API key and one day's diary — log a meal
+in the app and it shows up in the bench, and vice versa.
+
+## Three scan modes
 
 | Mode | What it does | Where it comes from |
 | --- | --- | --- |
@@ -101,8 +118,26 @@ run it.
 ### API keys
 
 Bring your own key; it is kept in `localStorage` and posted directly to the provider.
-Nothing is proxied. **Use a throwaway or spend-limited key** — this is a local test
-harness, and any key in a browser page is exposed to that page.
+Nothing is proxied. **Use a throwaway or spend-limited key** — any key in a browser page
+is exposed to that page.
+
+You only enter it **once per device**. It persists from then on. One iOS quirk worth
+knowing: a page added to the Home Screen gets its own storage container separate from
+Safari, so you'll enter it one more time inside the installed app.
+
+For a local checkout you can skip typing entirely:
+
+```sh
+cp local-config.example.js local-config.js   # then paste your key into it
+```
+
+`local-config.js` is git-ignored and is only requested when the page is served from
+`localhost`/`127.0.0.1`, so it is never committed and never fetched by the deployed site.
+It merely *seeds* the key — once you edit the key in the UI, the saved value wins.
+
+**The key is deliberately not baked into the deployed page.** This repository is public
+and so is its Pages site; a key committed to either is a key that gets scraped and
+drained, usually within minutes.
 
 Gemini is the most reliable provider from a browser. Anthropic needs the
 `anthropic-dangerous-direct-browser-access` header (already sent). OpenAI may be refused

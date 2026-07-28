@@ -24,3 +24,6 @@ ios/build-sim/
 
 # Xcode per-user state (scheme order, workspace UI) — meaningless off this machine
 ios/**/xcuserdata/
+
+# Scan Lab: local-only API key, never committed or deployed
+tools/scan-lab/local-config.js

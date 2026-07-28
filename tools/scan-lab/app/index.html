@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scan</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scan">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f1214">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="../icon-180.png">
+<style>
+  :root {
+    --bg:#f6f7f9; --card:#fff; --line:#e3e6ea; --ink:#14171a; --muted:#6b7278;
+    --accent:#17a673; --accent-ink:#fff; --warn:#b3541e; --over:#c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1214; --card:#171b1e; --line:#2a3034; --ink:#e8eaec; --muted:#98a0a7;
+            --accent:#23c88b; --accent-ink:#07120d; --warn:#e0995f; --over:#e8705f; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { overscroll-behavior-y:contain; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding:max(12px, env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom));
+    max-width:560px; margin-inline:auto;
+  }
+  button { font:inherit; border:none; border-radius:14px; cursor:pointer; }
+
+  /* ---- today ---- */
+  /* padding-right keeps the goal text clear of the absolutely-placed gear */
+  .today { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding-right:54px; }
+  .left { font-size:34px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  .left small { font-size:14px; font-weight:500; color:var(--muted); letter-spacing:0; }
+  .goal { font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .bar { height:8px; border-radius:99px; background:var(--line); overflow:hidden; margin:10px 0 4px; }
+  .bar i { display:block; height:100%; background:var(--accent); transition:width .3s ease; }
+  .bar i.over { background:var(--over); }
+  .macros { display:flex; gap:18px; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .macros b { color:var(--ink); font-weight:600; }
+
+  /* ---- modes ---- */
+  .modes { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:18px 0 12px; }
+  .modes button {
+    background:var(--card); color:var(--muted); border:1px solid var(--line);
+    padding:11px 4px; font-size:13px; font-weight:600;
+  }
+  .modes button[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+
+  /* ---- capture ---- */
+  .shoot { width:100%; background:var(--accent); color:var(--accent-ink); padding:20px; font-size:19px; font-weight:700; }
+  .shoot:disabled { opacity:.55; }
+  .pick { width:100%; background:transparent; color:var(--muted); border:1px solid var(--line); padding:12px; font-size:14px; margin-top:8px; }
+  .status { min-height:22px; font-size:14px; color:var(--muted); text-align:center; margin-top:12px; }
+  .status.err { color:var(--warn); }
+  .spin { display:inline-block; width:13px; height:13px; border:2px solid var(--line); border-top-color:var(--accent);
+          border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:7px; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+
+  /* ---- cards ---- */
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-top:14px; }
+  .shot { width:100%; max-height:190px; object-fit:cover; border-radius:12px; display:none; margin-top:14px; }
+  .foodname { font-size:19px; font-weight:700; line-height:1.25; }
+  .kcal { font-size:44px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-.03em; margin:6px 0 2px; }
+  .kcal small { font-size:15px; font-weight:600; color:var(--muted); letter-spacing:0; }
+  .mrow { display:flex; gap:20px; margin:10px 0 4px; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .mrow b { display:block; font-size:17px; color:var(--ink); }
+  .after { font-size:13px; color:var(--muted); margin-top:8px; }
+  .acts { display:grid; grid-template-columns:1fr auto; gap:10px; margin-top:14px; }
+  .acts .log { background:var(--accent); color:var(--accent-ink); padding:15px; font-weight:700; font-size:16px; }
+  .acts .no { background:transparent; color:var(--muted); border:1px solid var(--line); padding:15px 20px; }
+
+  /* ---- lists ---- */
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:22px 0 6px; font-weight:600; }
+  .row { display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:none; }
+  .row .g { flex:1; min-width:0; }
+  .row .n { font-weight:600; font-size:15px; }
+  .row .s { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .row button { background:transparent; color:var(--muted); border:1px solid var(--line); padding:7px 13px; font-size:13px; }
+  .row button.go { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  .row.dim { opacity:.45; }
+  .best { border:1.5px solid var(--accent); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .best .lbl { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  .best .n { font-size:17px; font-weight:700; margin-top:2px; }
+  .chips { display:flex; flex-wrap:wrap; gap:7px; }
+  .chips span { font-size:13px; padding:5px 11px; border-radius:99px; border:1px solid var(--line); background:var(--bg); }
+  .chips span.low { border-style:dashed; color:var(--muted); }
+  .tag { font-size:10px; padding:1px 6px; border-radius:99px; border:1px solid var(--warn); color:var(--warn);
+         margin-left:6px; text-transform:uppercase; letter-spacing:.04em; vertical-align:1px; }
+  .empty { font-size:14px; color:var(--muted); padding:6px 0; }
+
+  /* ---- settings ---- */
+  .gear { position:absolute; top:max(12px, env(safe-area-inset-top)); right:14px;
+          background:transparent; color:var(--muted); font-size:20px; padding:4px 8px; }
+  .wrap { position:relative; }
+  label { display:block; font-size:12px; color:var(--muted); margin:12px 0 4px; text-transform:uppercase; letter-spacing:.04em; }
+  input, select { width:100%; font:inherit; color:var(--ink); background:var(--bg);
+                  border:1px solid var(--line); border-radius:10px; padding:11px; }
+  .note { font-size:12px; color:var(--muted); margin-top:10px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <button class="gear" id="gear" aria-label="Settings">⚙︎</button>
+
+  <div class="today">
+    <div class="left"><span id="tKcal">0</span> <small>kcal</small></div>
+    <div class="goal" id="tLeft"></div>
+  </div>
+  <div class="bar"><i id="tBar" style="width:0"></i></div>
+  <div class="macros">
+    <span>P <b id="tP">0</b></span><span>C <b id="tC">0</b></span><span>F <b id="tF">0</b></span>
+  </div>
+</div>
+
+<section id="settings" class="card hidden">
+  <label for="provider">Provider</label>
+  <select id="provider">
+    <option value="gemini">Google Gemini</option>
+    <option value="anthropic">Anthropic Claude</option>
+    <option value="openai">OpenAI</option>
+  </select>
+  <label for="model">Model</label>
+  <input id="model" autocomplete="off">
+  <label for="key">API key</label>
+  <input id="key" type="password" autocomplete="off">
+  <label for="goal">Daily goal (kcal)</label>
+  <input id="goal" type="number" inputmode="numeric">
+  <p class="note">Saved on this device only and sent straight to your provider. Default goal is 1500 kcal.</p>
+  <p class="note"><a href="../" style="color:var(--accent)">Open the accuracy lab →</a></p>
+</section>
+
+<div class="modes" id="modes">
+  <button data-scan="meal" aria-pressed="true">🍽️ Meal</button>
+  <button data-scan="menu" aria-pressed="false">📋 Menu</button>
+  <button data-scan="fridge" aria-pressed="false">🧊 Fridge</button>
+</div>
+
+<button class="shoot" id="shoot">📷 Scan food</button>
+<button class="pick" id="pick">Choose an existing photo</button>
+<input id="fCam" type="file" accept="image/*" capture="environment" hidden>
+<input id="fLib" type="file" accept="image/*" hidden>
+<img id="shot" class="shot" alt="">
+<div class="status" id="status"></div>
+
+<section id="rMeal" class="card hidden">
+  <div class="foodname" id="mName"></div>
+  <div class="kcal"><span id="mKcal">0</span> <small>kcal</small></div>
+  <div class="mrow">
+    <div>Protein<b id="mP"></b></div><div>Carbs<b id="mC"></b></div>
+    <div>Fat<b id="mF"></b></div><div>Weight<b id="mG"></b></div>
+  </div>
+  <div class="after" id="mAfter"></div>
+  <div class="acts"><button class="log" id="mLog">Log it</button><button class="no" id="mNo">Discard</button></div>
+</section>
+
+<section id="rMenu" class="card hidden">
+  <div id="menuVenue" style="font-weight:700;margin-bottom:10px"></div>
+  <div id="menuBest"></div>
+  <div id="menuList"></div>
+</section>
+
+<section id="rFridge" class="card hidden">
+  <h2 style="margin-top:0">Spotted</h2>
+  <div class="chips" id="frItems"></div>
+  <h2>You could make</h2>
+  <div id="frMeals"></div>
+</section>
+
+<h2>Today</h2>
+<div id="diary"></div>
+
+<script>
+// Local-only key file, loaded only when running from a local checkout so a
+// deployed copy never requests (and never tries to parse) a missing file.
+if (['localhost','127.0.0.1','::1',''].indexOf(location.hostname) !== -1)
+  document.write('<scr' + 'ipt src="../local-config.js"><\/scr' + 'ipt>');
+</script>
+<script src="../scanner.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const { fmt, esc } = Scan;
+
+let mode = Scan.LS.get("scanlab.mode", "meal");
+let pending = null;   // analysed-but-not-logged meal
+
+/* ---------------- settings ---------------- */
+function loadSettings() {
+  const p = Scan.getProvider();
+  $("provider").value = p;
+  const cfg = Scan.getConfig(p);
+  $("model").value = cfg.model;
+  $("key").value = cfg.key;
+  $("key").placeholder = Scan.KEY_PLACEHOLDER[p];
+  $("goal").value = Scan.getGoal();
+}
+function saveSettings() {
+  const p = $("provider").value;
+  Scan.setProvider(p);
+  Scan.setConfig(p, $("model").value, $("key").value);
+  Scan.setGoal($("goal").value);
+  renderToday();
+}
+$("gear").addEventListener("click", () => $("settings").classList.toggle("hidden"));
+$("provider").addEventListener("change", () => { Scan.setProvider($("provider").value); loadSettings(); });
+["model", "key"].forEach(id => $(id).addEventListener("input", saveSettings));
+$("goal").addEventListener("input", saveSettings);
+
+/* ---------------- modes ---------------- */
+function applyMode() {
+  $("modes").querySelectorAll("button").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.scan === mode)));
+  $("shoot").textContent = { meal:"📷 Scan food", menu:"📷 Scan menu", fridge:"📷 Scan fridge" }[mode];
+  ["rMeal", "rMenu", "rFridge"].forEach(id => $(id).classList.add("hidden"));
+  $("shot").style.display = "none";
+  setStatus("");
+  Scan.LS.set("scanlab.mode", mode);
+}
+$("modes").addEventListener("click", e => {
+  const b = e.target.closest("button[data-scan]");
+  if (!b) return;
+  mode = b.dataset.scan;
+  applyMode();
+});
+
+/* ---------------- capture ---------------- */
+$("shoot").addEventListener("click", () => $("fCam").click());
+$("pick").addEventListener("click", () => $("fLib").click());
+$("fCam").addEventListener("change", e => e.target.files[0] && go(e.target.files[0]));
+$("fLib").addEventListener("change", e => e.target.files[0] && go(e.target.files[0]));
+
+function setStatus(msg, err) {
+  $("status").innerHTML = msg;
+  $("status").className = "status" + (err ? " err" : "");
+}
+
+// One tap: choosing a photo analyses it immediately.
+async function go(file) {
+  const p = Scan.getProvider();
+  const { model, key } = Scan.getConfig(p);
+  if (!key) {
+    $("settings").classList.remove("hidden");
+    return setStatus("Add your API key in settings first.", true);
+  }
+  ["rMeal", "rMenu", "rFridge"].forEach(id => $(id).classList.add("hidden"));
+  $("shoot").disabled = true;
+
+  try {
+    const img = await Scan.encodeImage(file);
+    $("shot").src = img.dataUrl;
+    $("shot").style.display = "block";
+    setStatus('<span class="spin"></span>Reading the photo…');
+
+    const prompt = mode === "meal" ? Scan.PROMPTS.food
+                 : mode === "menu" ? Scan.MENU_PROMPT
+                 : Scan.FRIDGE_PROMPT;
+
+    const t0 = performance.now();
+    const raw = await Scan.call(p, model, key, prompt, img.b64);
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+
+    if (mode === "meal")        showMeal(Scan.parseAnalysis(raw), secs);
+    else if (mode === "menu")   showMenu(Scan.parseMenu(raw), secs);
+    else                        showFridge(Scan.parseFridge(raw), secs);
+  } catch (err) {
+    setStatus(esc(err.message), true);
+  } finally {
+    $("shoot").disabled = false;
+    $("fCam").value = ""; $("fLib").value = "";
+  }
+}
+
+/* ---------------- meal ---------------- */
+function showMeal(a, secs) {
+  pending = a;
+  $("mName").textContent = (a.emoji ? a.emoji + " " : "") + a.name;
+  $("mKcal").textContent = Math.round(a.calories);
+  $("mP").textContent = fmt(a.protein) + " g";
+  $("mC").textContent = fmt(a.carbs) + " g";
+  $("mF").textContent = fmt(a.fat) + " g";
+  $("mG").textContent = fmt(a.serving_size_grams) + " g";
+  const after = Scan.remainingKcal() - Math.round(a.calories);
+  $("mAfter").textContent = after >= 0
+    ? `${Math.round(after)} kcal left today if you log this`
+    : `${Math.round(-after)} kcal over your goal if you log this`;
+  $("rMeal").classList.remove("hidden");
+  setStatus(`Estimated in ${secs}s`);
+}
+$("mLog").addEventListener("click", () => {
+  if (!pending) return;
+  Scan.logEntry(pending, "meal");
+  pending = null;
+  $("rMeal").classList.add("hidden");
+  $("shot").style.display = "none";
+  renderToday();
+  setStatus("Logged.");
+});
+$("mNo").addEventListener("click", () => {
+  pending = null;
+  $("rMeal").classList.add("hidden");
+  $("shot").style.display = "none";
+  setStatus("");
+});
+
+/* ---------------- menu ---------------- */
+function showMenu(m, secs) {
+  const remaining = Scan.remainingKcal();
+  const ranked = Scan.rankByFit(m.items, remaining);
+  const best = ranked[0];
+  const fits = Number(best.calories) <= remaining;
+
+  $("menuVenue").textContent = m.venue || "";
+  $("menuBest").innerHTML = `<div class="best">
+    <div class="lbl">${fits ? `Best for your remaining ${Math.round(remaining)} kcal` : "Nothing fits — lightest option"}</div>
+    <div class="n">${esc(best.name)}</div>
+    <div class="s" style="font-size:13px;color:var(--muted)">
+      ${Math.round(best.calories)} kcal · ${fmt(best.protein)} g protein</div>
+  </div>`;
+
+  $("menuList").innerHTML = ranked.map((it, i) => `<div class="row ${Number(it.calories) > remaining ? "dim" : ""}">
+    <div class="g">
+      <div class="n">${esc(it.name)}${String(it.confidence).toLowerCase() === "low" ? '<span class="tag">low</span>' : ""}</div>
+      <div class="s">${Math.round(it.calories)} kcal · P ${fmt(it.protein)}${it.price ? " · " + esc(it.price) : ""}</div>
+    </div>
+    <button data-i="${i}" class="${i === 0 ? "go" : ""}">Log</button>
+  </div>`).join("");
+
+  $("menuList").querySelectorAll("button[data-i]").forEach(b =>
+    b.addEventListener("click", () => {
+      Scan.logEntry(ranked[+b.dataset.i], "menu");
+      renderToday();
+      setStatus("Logged.");
+    }));
+
+  $("rMenu").classList.remove("hidden");
+  setStatus(`${ranked.length} dishes read in ${secs}s`);
+}
+
+/* ---------------- fridge ---------------- */
+function showFridge(f, secs) {
+  $("frItems").innerHTML = f.items.length
+    ? f.items.map(i => `<span class="${String(i.confidence).toLowerCase() === "low" ? "low" : ""}">${esc(i.name)}</span>`).join("")
+    : '<span class="low">nothing identifiable</span>';
+
+  const remaining = Scan.remainingKcal();
+  const ranked = Scan.rankByFit(f.meals, remaining);
+
+  $("frMeals").innerHTML = ranked.length ? ranked.map((m, i) => {
+    const missing = (Array.isArray(m.missing) ? m.missing : []).filter(Boolean);
+    return `<div class="row ${Number(m.calories) > remaining ? "dim" : ""}">
+      <div class="g">
+        <div class="n">${esc(m.name)}</div>
+        <div class="s">${Math.round(m.calories)} kcal · P ${fmt(m.protein)}${missing.length ? " · need " + esc(missing.join(", ")) : ""}</div>
+      </div>
+      <button data-i="${i}" class="${i === 0 ? "go" : ""}">Log</button>
+    </div>`;
+  }).join("") : '<div class="empty">No meal ideas came back.</div>';
+
+  $("frMeals").querySelectorAll("button[data-i]").forEach(b =>
+    b.addEventListener("click", () => {
+      Scan.logEntry(ranked[+b.dataset.i], "fridge");
+      renderToday();
+      setStatus("Logged.");
+    }));
+
+  $("rFridge").classList.remove("hidden");
+  setStatus(`${f.items.length} items in ${secs}s`);
+}
+
+/* ---------------- today ---------------- */
+const ICON = { meal:"🍽️", menu:"📋", fridge:"🧊" };
+
+function renderToday() {
+  const t = Scan.dayTotals(), goal = Scan.getGoal(), left = goal - t.kcal;
+  $("tKcal").textContent = Math.round(t.kcal);
+  $("tLeft").textContent = left >= 0 ? `${Math.round(left)} left of ${goal}` : `${Math.round(-left)} over ${goal}`;
+  $("tP").textContent = fmt(t.p) + "g";
+  $("tC").textContent = fmt(t.c) + "g";
+  $("tF").textContent = fmt(t.f) + "g";
+  const bar = $("tBar");
+  bar.style.width = Math.min(100, goal > 0 ? (t.kcal / goal) * 100 : 0) + "%";
+  bar.className = left < 0 ? "over" : "";
+
+  const entries = Scan.dayEntries();
+  $("diary").innerHTML = entries.length ? entries.map((e, i) => `<div class="row">
+    <div class="g">
+      <div class="n">${e.emoji || ICON[e.source] || "•"} ${esc(e.name)}</div>
+      <div class="s">${Math.round(e.calories)} kcal · P ${fmt(e.protein)} · C ${fmt(e.carbs)} · F ${fmt(e.fat)}</div>
+    </div>
+    <button data-del="${i}">Remove</button>
+  </div>`).join("") : '<div class="empty">Nothing logged yet today.</div>';
+
+  $("diary").querySelectorAll("button[data-del]").forEach(b =>
+    b.addEventListener("click", () => { Scan.removeEntry(+b.dataset.del); renderToday(); }));
+}
+
+loadSettings();
+applyMode();
+renderToday();
+</script>
+</body>
+</html>
