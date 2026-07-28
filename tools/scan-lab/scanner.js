@@ -220,6 +220,100 @@ function removeEntry(idx) {
   LS.set("scanlab.day", d);
 }
 
+/* --------------------------- saved meals --------------------------- */
+// Repeat items — a daily shake, a usual breakfast — should not cost an API
+// call or a retyped note every time. A saved meal is just fixed macros with a
+// type, logged in one tap.
+
+const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"];
+
+const savedMeals = () => {
+  const v = LS.get("scanlab.saved", []);
+  return Array.isArray(v) ? v : [];
+};
+
+function normaliseType(t) {
+  const s = String(t || "").trim().toLowerCase();
+  return MEAL_TYPES.indexOf(s) !== -1 ? s : (s || "any");
+}
+
+function saveMeal(m) {
+  const list = savedMeals();
+  list.push({
+    id: "m" + Date.now() + Math.random().toString(36).slice(2, 7),
+    name: String(m.name || "Untitled").trim(),
+    emoji: m.emoji || null,
+    type: normaliseType(m.type),
+    calories: Number(m.calories) || 0,
+    protein: Number(m.protein) || 0,
+    carbs: Number(m.carbs) || 0,
+    fat: Number(m.fat) || 0
+  });
+  LS.set("scanlab.saved", list);
+  return list[list.length - 1];
+}
+
+function deleteSavedMeal(id) {
+  LS.set("scanlab.saved", savedMeals().filter(m => m.id !== id));
+}
+
+// Accepts either a JSON array of objects, or one meal per line as
+//   type | name | kcal | protein | carbs | fat
+// with comma or tab equally acceptable as the separator. Returns the parsed
+// rows plus per-line problems so the caller can report them rather than
+// silently dropping half an import.
+function parseMealPlan(text) {
+  const src = String(text || "").trim();
+  if (!src) return { meals: [], errors: [] };
+
+  if (src[0] === "[" || src[0] === "{") {
+    let data;
+    try { data = JSON.parse(src); }
+    catch (e) { return { meals: [], errors: ["That looked like JSON but would not parse: " + e.message] }; }
+    const arr = Array.isArray(data) ? data : (Array.isArray(data.meals) ? data.meals : [data]);
+    const meals = [], errors = [];
+    arr.forEach((r, i) => {
+      const name = r.name || r.meal || r.title;
+      const kcal = Number(r.calories != null ? r.calories : (r.kcal != null ? r.kcal : r.cals));
+      if (!name || !Number.isFinite(kcal)) { errors.push(`Item ${i + 1}: needs a name and calories`); return; }
+      meals.push({
+        name, type: normaliseType(r.type || r.meal_type || r.category),
+        calories: kcal,
+        protein: Number(r.protein != null ? r.protein : r.p) || 0,
+        carbs: Number(r.carbs != null ? r.carbs : r.c) || 0,
+        fat: Number(r.fat != null ? r.fat : r.f) || 0
+      });
+    });
+    return { meals, errors };
+  }
+
+  const meals = [], errors = [];
+  src.split(/\r?\n/).forEach((line, i) => {
+    const raw = line.trim();
+    if (!raw || raw.startsWith("#")) return;
+    const parts = raw.split(/\s*[|\t,]\s*/).filter(p => p !== "");
+    if (parts.length < 3) { errors.push(`Line ${i + 1}: expected type | name | kcal | protein | carbs | fat`); return; }
+    // Leading type is optional: if field 2 is a number, the line started with the name.
+    const hasType = !Number.isFinite(Number(parts[1]));
+    const type = hasType ? parts[0] : "any";
+    const name = hasType ? parts[1] : parts[0];
+    const nums = parts.slice(hasType ? 2 : 1).map(Number);
+    if (!name || !Number.isFinite(nums[0])) { errors.push(`Line ${i + 1}: could not read the calories`); return; }
+    meals.push({
+      name, type: normaliseType(type),
+      calories: nums[0], protein: nums[1] || 0, carbs: nums[2] || 0, fat: nums[3] || 0
+    });
+  });
+  return { meals, errors };
+}
+
+function importMealPlan(text, replace) {
+  const { meals, errors } = parseMealPlan(text);
+  if (replace) LS.set("scanlab.saved", []);
+  meals.forEach(saveMeal);
+  return { added: meals.length, errors };
+}
+
 /* --------------------------- image --------------------------- */
 // Mirrors GeminiService.encodedJPEGData(for:maxDimension:) — 1600px cap, q0.8.
 function encodeImage(file) {
@@ -381,9 +475,10 @@ const fmt = n => (n === null || n === undefined || isNaN(n)) ? "—"
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 
 global.Scan = {
-  DEFAULT_GOAL_KCAL, PROMPTS, MENU_PROMPT, FRIDGE_PROMPT, SCAN_MODES,
+  DEFAULT_GOAL_KCAL, MEAL_TYPES, PROMPTS, MENU_PROMPT, FRIDGE_PROMPT, SCAN_MODES,
   DEFAULT_MODELS, NUTRIENTS, KEY_PLACEHOLDER, LS,
   getConfig, setConfig, getProvider, setProvider, getGoal, setGoal,
+  savedMeals, saveMeal, deleteSavedMeal, parseMealPlan, importMealPlan,
   todayKey, dayEntries, dayTotals, remainingKcal, logEntry, updateEntry, removeEntry,
   encodeImage, call, withContext, extractJSON, parseAnalysis, parseMenu, parseFridge,
   proteinDensity, rankByFit, fmt, esc

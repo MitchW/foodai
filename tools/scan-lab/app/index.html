@@ -116,6 +116,19 @@
   .eg label { font-size:10px; margin:10px 0 3px; }
   .eg input { padding:9px 7px; font-size:15px; text-align:center; }
   .rowedit { padding:10px 0 14px; border-bottom:1px solid var(--line); }
+
+  /* ---- saved meals ---- */
+  .saverow { display:flex; gap:8px; align-items:center; margin-top:12px; }
+  .saverow select { flex:1; }
+  .saverow > button { flex:none; background:transparent; color:var(--accent); border:1px solid var(--accent);
+                      padding:11px 14px; font-size:14px; font-weight:600; }
+  .saverow label.inline { flex:1; margin:0; text-transform:none; letter-spacing:0; font-size:13px;
+                          display:flex; align-items:center; gap:7px; }
+  .saverow label.inline input { width:auto; }
+  textarea { width:100%; font:14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--ink);
+             background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:11px; resize:vertical; }
+  #savedFilter span { cursor:pointer; }
+  #savedFilter span[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
 </style>
 </head>
 <body>
@@ -147,6 +160,17 @@
   <label for="goal">Daily goal (kcal)</label>
   <input id="goal" type="number" inputmode="numeric">
   <p class="note">Saved on this device only and sent straight to your provider. Default goal is 1500 kcal.</p>
+
+  <label for="planText">Import a meal plan</label>
+  <textarea id="planText" rows="4" placeholder="breakfast | Overnight oats | 420 | 32 | 48 | 10
+lunch | Chicken salad | 430 | 41 | 18 | 21
+snack | Protein shake | 430 | 43 | 22 | 12"></textarea>
+  <p class="note">One meal per line: <code>type | name | kcal | protein | carbs | fat</code>. Commas or tabs work too, the type is optional, and a JSON array is accepted as-is.</p>
+  <div class="saverow">
+    <label class="inline"><input type="checkbox" id="planReplace"> Replace existing</label>
+    <button id="planImport">Import</button>
+  </div>
+  <div id="planMsg" class="note"></div>
   <p class="note"><a href="../" style="color:var(--accent)">Open the accuracy lab →</a></p>
 </section>
 
@@ -190,7 +214,24 @@
     </div>
   </div>
 
+  <div class="saverow">
+    <select id="mType" aria-label="Meal type">
+      <option value="any">Any time</option>
+      <option value="breakfast">Breakfast</option>
+      <option value="lunch">Lunch</option>
+      <option value="dinner">Dinner</option>
+      <option value="snack">Snack</option>
+    </select>
+    <button id="mSave">☆ Save as repeat</button>
+  </div>
+
   <div class="acts"><button class="log" id="mLog">Log it</button><button class="no" id="mNo">Discard</button></div>
+</section>
+
+<section id="savedCard" class="hidden">
+  <h2>Saved meals — one tap, no API call</h2>
+  <div class="chips" id="savedFilter"></div>
+  <div id="savedList"></div>
 </section>
 
 <section id="rMenu" class="card hidden">
@@ -470,8 +511,68 @@ function showFridge(f, secs) {
   setStatus(`${f.items.length} items in ${secs}s`);
 }
 
+/* ---------------- saved meals ---------------- */
+let savedFilter = "all";
+
+$("mSave").addEventListener("click", () => {
+  const entry = pendingWithEdits();
+  if (!entry) return;
+  Scan.saveMeal({ ...entry, type: $("mType").value });
+  renderSaved();
+  setStatus("Saved. It'll be one tap from now on.");
+});
+
+$("planImport").addEventListener("click", () => {
+  const text = $("planText").value;
+  if (!text.trim()) { $("planMsg").textContent = "Paste a plan first."; return; }
+  const { added, errors } = Scan.importMealPlan(text, $("planReplace").checked);
+  $("planMsg").innerHTML =
+    `Imported ${added} meal${added === 1 ? "" : "s"}.` +
+    (errors.length ? ` <span class="err" style="color:var(--warn)">Skipped ${errors.length}: ${esc(errors.join("; "))}</span>` : "");
+  if (added) $("planText").value = "";
+  renderSaved();
+});
+
+function renderSaved() {
+  const all = Scan.savedMeals();
+  $("savedCard").classList.toggle("hidden", all.length === 0);
+  if (!all.length) return;
+
+  const types = ["all"].concat(Scan.MEAL_TYPES.filter(t => all.some(m => m.type === t)));
+  if (all.some(m => m.type === "any")) types.push("any");
+  if (types.indexOf(savedFilter) === -1) savedFilter = "all";
+
+  $("savedFilter").innerHTML = types.map(t =>
+    `<span data-t="${t}" aria-pressed="${t === savedFilter}">${t === "all" ? "All" : t === "any" ? "Any time" : esc(t)}</span>`
+  ).join("");
+  $("savedFilter").querySelectorAll("span[data-t]").forEach(s =>
+    s.addEventListener("click", () => { savedFilter = s.dataset.t; renderSaved(); }));
+
+  const shown = savedFilter === "all" ? all : all.filter(m => m.type === savedFilter);
+  $("savedList").innerHTML = shown.map(m => `<div class="row">
+    <div class="g">
+      <div class="n">${m.emoji ? m.emoji + " " : ""}${esc(m.name)}</div>
+      <div class="s">${Math.round(m.calories)} kcal · P ${fmt(m.protein)} · C ${fmt(m.carbs)} · F ${fmt(m.fat)}${m.type !== "any" ? " · " + esc(m.type) : ""}</div>
+    </div>
+    <button class="go" data-log="${m.id}">+ Log</button>
+    <button data-forget="${m.id}">✕</button>
+  </div>`).join("");
+
+  $("savedList").querySelectorAll("button[data-log]").forEach(b =>
+    b.addEventListener("click", () => {
+      const m = Scan.savedMeals().find(x => x.id === b.dataset.log);
+      if (!m) return;
+      Scan.logEntry(m, "saved");
+      renderToday();
+      setStatus(`Logged ${m.name}.`);
+    }));
+
+  $("savedList").querySelectorAll("button[data-forget]").forEach(b =>
+    b.addEventListener("click", () => { Scan.deleteSavedMeal(b.dataset.forget); renderSaved(); }));
+}
+
 /* ---------------- today ---------------- */
-const ICON = { meal:"🍽️", menu:"📋", fridge:"🧊" };
+const ICON = { meal:"🍽️", menu:"📋", fridge:"🧊", saved:"⭐" };
 
 function renderToday() {
   const t = Scan.dayTotals(), goal = Scan.getGoal(), left = goal - t.kcal;
@@ -538,6 +639,7 @@ function renderToday() {
 
 loadSettings();
 applyMode();
+renderSaved();
 renderToday();
 </script>
 </body>
