@@ -58,18 +58,45 @@ the only sensible suggestion against a blown budget is the smallest thing availa
 Set a daily calorie goal in the Today card to drive all of this. Anything you log from a
 menu or fridge result lands in the same day total as your meal scans.
 
-## Running it
+## Running it on your phone (GitHub Pages)
 
-Any static server works; it has no build step and no dependencies.
+`.github/workflows/scan-lab-pages.yml` publishes this folder as the site root, so the
+harness gets a stable HTTPS URL you can open on a phone and add to your home screen.
+
+**One manual step is required first**, and only once. GitHub's default Actions token is
+not permitted to create a Pages site — the workflow fails at `configure-pages` with
+`Resource not accessible by integration` until Pages exists. To enable it:
+
+> Repository **Settings** → **Pages** → **Build and deployment** → **Source: GitHub Actions**
+
+Then re-run the workflow (Actions → *Deploy Scan Lab to GitHub Pages* → Run workflow), or
+push any change under `tools/scan-lab/`. The site lands at:
+
+```
+https://<your-username>.github.io/<repo>/
+```
+
+On the phone, open that URL and use **Share → Add to Home Screen** (iOS) or
+**⋮ → Add to Home screen** (Android). The manifest sets `display: standalone`, so it
+launches full-screen with no browser chrome.
+
+Note that a Pages site on a public repo is publicly readable. That's fine here — the page
+is static and contains no secrets. Your API key is typed on the device, kept in that
+browser's `localStorage`, and never leaves it except to go to your AI provider.
+
+## Running it locally
+
+Any static server works; there is no build step and no dependencies.
 
 ```sh
 cd tools/scan-lab
 npx http-server -p 8899        # then open http://localhost:8899
 ```
 
-Opening `index.html` straight off disk also works for Gemini. To snap photos with a phone
-camera, serve it over HTTPS or `localhost` — browsers gate camera capture on a secure
-context. The `📷 Take photo` button opens the rear camera on iOS Safari and Android Chrome.
+Opening `index.html` straight off disk works too. The `📷 Take photo` button uses a file
+input with `capture`, which hands off to the OS camera app rather than `getUserMedia`, so
+it does not require a secure context — but HTTPS or `localhost` is still the sane way to
+run it.
 
 ### API keys
 
