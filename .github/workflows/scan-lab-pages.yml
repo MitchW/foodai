@@ -1,0 +1,45 @@
+name: Deploy Scan Lab to GitHub Pages
+
+# Publishes tools/scan-lab so it can be opened on a phone over HTTPS.
+# The page is static and holds no secrets: the API key you type is kept in
+# your own browser's localStorage and posted straight to your AI provider,
+# so nothing sensitive is ever part of what gets deployed here.
+
+on:
+  push:
+    branches:
+      - main
+      - claude/calorie-tracker-app-comparison-jbkrys
+    paths:
+      - 'tools/scan-lab/**'
+      - '.github/workflows/scan-lab-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it mid-publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      # Upload only the harness, so index.html lands at the site root.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: tools/scan-lab
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
