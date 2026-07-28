@@ -637,10 +637,36 @@ function renderToday() {
     }));
 }
 
+/* ---------------- ?import= link ---------------- */
+// Lets a plan be handed over as a link rather than retyped on a phone.
+// Nothing is stored server-side; the meals travel in the URL. Always confirms
+// first, because a link is something someone else can send you.
+function handleImportLink() {
+  const raw = new URLSearchParams(location.search).get("import");
+  if (!raw) return;
+  history.replaceState(null, "", location.pathname);   // never re-import on refresh
+
+  const { meals, errors } = Scan.parseMealPlan(raw);
+  if (!meals.length) {
+    setStatus("That import link had nothing readable in it." + (errors.length ? " " + esc(errors[0]) : ""), true);
+    return;
+  }
+  const summary = meals.map(m => `• ${m.name} — ${Math.round(m.calories)} kcal, ${m.protein}g protein`).join("\n");
+  if (!confirm(`Add ${meals.length} meal${meals.length === 1 ? "" : "s"} to your saved meals?\n\n${summary}`)) {
+    setStatus("Import cancelled.");
+    return;
+  }
+  meals.forEach(Scan.saveMeal);
+  renderSaved();
+  setStatus(`Added ${meals.length} saved meal${meals.length === 1 ? "" : "s"}.` +
+            (errors.length ? ` Skipped ${errors.length}.` : ""));
+}
+
 loadSettings();
 applyMode();
 renderSaved();
 renderToday();
+handleImportLink();
 </script>
 </body>
 </html>

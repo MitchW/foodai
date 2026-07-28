@@ -291,7 +291,13 @@ function parseMealPlan(text) {
   src.split(/\r?\n/).forEach((line, i) => {
     const raw = line.trim();
     if (!raw || raw.startsWith("#")) return;
-    const parts = raw.split(/\s*[|\t,]\s*/).filter(p => p !== "");
+    // Pick ONE separator per line, most explicit first. Splitting on all three
+    // at once corrupts any meal name that legitimately contains a comma, e.g.
+    // "Macro Shake + ½ scoop Macro Mike, milk".
+    const sep = raw.indexOf("|") !== -1 ? /\s*\|\s*/
+              : raw.indexOf("\t") !== -1 ? /\t+/
+              : /\s*,\s*/;
+    const parts = raw.split(sep).map(p => p.trim()).filter(p => p !== "");
     if (parts.length < 3) { errors.push(`Line ${i + 1}: expected type | name | kcal | protein | carbs | fat`); return; }
     // Leading type is optional: if field 2 is a number, the line started with the name.
     const hasType = !Number.isFinite(Number(parts[1]));
