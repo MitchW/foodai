@@ -102,6 +102,20 @@
                   border:1px solid var(--line); border-radius:10px; padding:11px; }
   .note { font-size:12px; color:var(--muted); margin-top:10px; }
   .hidden { display:none !important; }
+
+  /* ---- correcting a result ---- */
+  .ask { margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
+  .ask label { margin-top:0; }
+  .redo { width:100%; margin-top:8px; background:transparent; color:var(--accent);
+          border:1px solid var(--accent); padding:12px; font-size:14px; font-weight:600; }
+  .redo:disabled { opacity:.5; }
+  .editlink { width:100%; background:transparent; color:var(--muted); padding:12px 0 0;
+              font-size:13px; text-align:center; }
+  .edit { margin-top:6px; }
+  .eg { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .eg label { font-size:10px; margin:10px 0 3px; }
+  .eg input { padding:9px 7px; font-size:15px; text-align:center; }
+  .rowedit { padding:10px 0 14px; border-bottom:1px solid var(--line); }
 </style>
 </head>
 <body>
@@ -157,6 +171,25 @@
     <div>Fat<b id="mF"></b></div><div>Weight<b id="mG"></b></div>
   </div>
   <div class="after" id="mAfter"></div>
+
+  <div class="ask">
+    <label for="mNote">Anything it couldn't see?</label>
+    <input id="mNote" placeholder="e.g. 2 scoops whey, 300ml semi-skimmed milk">
+    <button class="redo" id="mRedo">↻ Re-estimate with this</button>
+  </div>
+
+  <button class="editlink" id="mEditToggle">✎ Or correct the numbers yourself</button>
+  <div class="edit hidden" id="mEdit">
+    <label for="eName">Name</label>
+    <input id="eName">
+    <div class="eg">
+      <div><label for="eKcal">kcal</label><input id="eKcal" type="number" inputmode="numeric"></div>
+      <div><label for="eP">Protein g</label><input id="eP" type="number" inputmode="decimal" step="0.1"></div>
+      <div><label for="eC">Carbs g</label><input id="eC" type="number" inputmode="decimal" step="0.1"></div>
+      <div><label for="eF">Fat g</label><input id="eF" type="number" inputmode="decimal" step="0.1"></div>
+    </div>
+  </div>
+
   <div class="acts"><button class="log" id="mLog">Log it</button><button class="no" id="mNo">Discard</button></div>
 </section>
 
@@ -189,7 +222,9 @@ const $ = id => document.getElementById(id);
 const { fmt, esc } = Scan;
 
 let mode = Scan.LS.get("scanlab.mode", "meal");
-let pending = null;   // analysed-but-not-logged meal
+let pending = null;      // analysed-but-not-logged meal
+let lastImage = null;    // kept so "re-estimate with this note" can resend it
+let editingRow = null;   // index of the diary row being edited, if any
 
 /* ---------------- settings ---------------- */
 function loadSettings() {
@@ -243,42 +278,65 @@ function setStatus(msg, err) {
 
 // One tap: choosing a photo analyses it immediately.
 async function go(file) {
+  try {
+    const img = await Scan.encodeImage(file);
+    lastImage = img.b64;
+    $("shot").src = img.dataUrl;
+    $("shot").style.display = "block";
+    $("mNote").value = "";
+    await analyse("");
+  } catch (err) {
+    setStatus(esc(err.message), true);
+  } finally {
+    $("fCam").value = ""; $("fLib").value = "";
+  }
+}
+
+// Shared by the first scan and by "re-estimate with this note", so a correction
+// goes back through the same path rather than a second code route.
+async function analyse(description) {
   const p = Scan.getProvider();
   const { model, key } = Scan.getConfig(p);
   if (!key) {
     $("settings").classList.remove("hidden");
     return setStatus("Add your API key in settings first.", true);
   }
+  if (!lastImage) return setStatus("Take a photo first.", true);
+
   ["rMeal", "rMenu", "rFridge"].forEach(id => $(id).classList.add("hidden"));
   $("shoot").disabled = true;
+  $("mRedo").disabled = true;
+  setStatus('<span class="spin"></span>' + (description ? "Re-estimating…" : "Reading the photo…"));
 
   try {
-    const img = await Scan.encodeImage(file);
-    $("shot").src = img.dataUrl;
-    $("shot").style.display = "block";
-    setStatus('<span class="spin"></span>Reading the photo…');
-
-    const prompt = mode === "meal" ? Scan.PROMPTS.food
-                 : mode === "menu" ? Scan.MENU_PROMPT
-                 : Scan.FRIDGE_PROMPT;
+    const base = mode === "meal" ? Scan.PROMPTS.food
+               : mode === "menu" ? Scan.MENU_PROMPT
+               : Scan.FRIDGE_PROMPT;
+    const prompt = Scan.withContext(base, description);
 
     const t0 = performance.now();
-    const raw = await Scan.call(p, model, key, prompt, img.b64);
+    const raw = await Scan.call(p, model, key, prompt, lastImage);
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
 
-    if (mode === "meal")        showMeal(Scan.parseAnalysis(raw), secs);
+    if (mode === "meal")        showMeal(Scan.parseAnalysis(raw), secs, description);
     else if (mode === "menu")   showMenu(Scan.parseMenu(raw), secs);
     else                        showFridge(Scan.parseFridge(raw), secs);
   } catch (err) {
     setStatus(esc(err.message), true);
   } finally {
     $("shoot").disabled = false;
-    $("fCam").value = ""; $("fLib").value = "";
+    $("mRedo").disabled = false;
   }
 }
 
+$("mRedo").addEventListener("click", () => {
+  const note = $("mNote").value.trim();
+  if (!note) return setStatus("Type what it missed first — what was in it, or how much.", true);
+  analyse(note);
+});
+
 /* ---------------- meal ---------------- */
-function showMeal(a, secs) {
+function showMeal(a, secs, description) {
   pending = a;
   $("mName").textContent = (a.emoji ? a.emoji + " " : "") + a.name;
   $("mKcal").textContent = Math.round(a.calories);
@@ -286,26 +344,64 @@ function showMeal(a, secs) {
   $("mC").textContent = fmt(a.carbs) + " g";
   $("mF").textContent = fmt(a.fat) + " g";
   $("mG").textContent = fmt(a.serving_size_grams) + " g";
+
   const after = Scan.remainingKcal() - Math.round(a.calories);
   $("mAfter").textContent = after >= 0
     ? `${Math.round(after)} kcal left today if you log this`
     : `${Math.round(-after)} kcal over your goal if you log this`;
+
+  // Keep the edit panel in sync so opening it never shows stale values.
+  $("eName").value = a.name;
+  $("eKcal").value = Math.round(a.calories);
+  $("eP").value = fmt(a.protein);
+  $("eC").value = fmt(a.carbs);
+  $("eF").value = fmt(a.fat);
+  $("mEdit").classList.add("hidden");
+  $("mEditToggle").textContent = "✎ Or correct the numbers yourself";
+
   $("rMeal").classList.remove("hidden");
-  setStatus(`Estimated in ${secs}s`);
+  setStatus(description ? `Re-estimated in ${secs}s` : `Estimated in ${secs}s`);
 }
+
+$("mEditToggle").addEventListener("click", () => {
+  const hidden = $("mEdit").classList.toggle("hidden");
+  $("mEditToggle").textContent = hidden ? "✎ Or correct the numbers yourself" : "Hide";
+});
+
+// Manual edits win over the model's numbers.
+function pendingWithEdits() {
+  if (!pending) return null;
+  const num = (el, fallback) => {
+    const v = Number($(el).value);
+    return Number.isFinite(v) ? v : fallback;
+  };
+  return {
+    ...pending,
+    name: $("eName").value.trim() || pending.name,
+    calories: num("eKcal", pending.calories),
+    protein: num("eP", pending.protein),
+    carbs: num("eC", pending.carbs),
+    fat: num("eF", pending.fat)
+  };
+}
+
 $("mLog").addEventListener("click", () => {
-  if (!pending) return;
-  Scan.logEntry(pending, "meal");
-  pending = null;
+  const entry = pendingWithEdits();
+  if (!entry) return;
+  Scan.logEntry(entry, "meal");
+  pending = null; lastImage = null;
   $("rMeal").classList.add("hidden");
   $("shot").style.display = "none";
+  $("mNote").value = "";
   renderToday();
   setStatus("Logged.");
 });
+
 $("mNo").addEventListener("click", () => {
-  pending = null;
+  pending = null; lastImage = null;
   $("rMeal").classList.add("hidden");
   $("shot").style.display = "none";
+  $("mNote").value = "";
   setStatus("");
 });
 
@@ -389,16 +485,55 @@ function renderToday() {
   bar.className = left < 0 ? "over" : "";
 
   const entries = Scan.dayEntries();
-  $("diary").innerHTML = entries.length ? entries.map((e, i) => `<div class="row">
-    <div class="g">
-      <div class="n">${e.emoji || ICON[e.source] || "•"} ${esc(e.name)}</div>
-      <div class="s">${Math.round(e.calories)} kcal · P ${fmt(e.protein)} · C ${fmt(e.carbs)} · F ${fmt(e.fat)}</div>
-    </div>
-    <button data-del="${i}">Remove</button>
-  </div>`).join("") : '<div class="empty">Nothing logged yet today.</div>';
+  $("diary").innerHTML = entries.length ? entries.map((e, i) => {
+    if (i === editingRow) {
+      return `<div class="rowedit">
+        <label for="rName${i}">Name</label>
+        <input id="rName${i}" value="${esc(e.name)}">
+        <div class="eg">
+          <div><label>kcal</label><input id="rKcal${i}" type="number" inputmode="numeric" value="${Math.round(e.calories)}"></div>
+          <div><label>Protein g</label><input id="rP${i}" type="number" inputmode="decimal" step="0.1" value="${fmt(e.protein)}"></div>
+          <div><label>Carbs g</label><input id="rC${i}" type="number" inputmode="decimal" step="0.1" value="${fmt(e.carbs)}"></div>
+          <div><label>Fat g</label><input id="rF${i}" type="number" inputmode="decimal" step="0.1" value="${fmt(e.fat)}"></div>
+        </div>
+        <div class="acts"><button class="log" data-save="${i}">Save</button><button class="no" data-cancel="1">Cancel</button></div>
+      </div>`;
+    }
+    return `<div class="row">
+      <div class="g">
+        <div class="n">${e.emoji || ICON[e.source] || "•"} ${esc(e.name)}</div>
+        <div class="s">${Math.round(e.calories)} kcal · P ${fmt(e.protein)} · C ${fmt(e.carbs)} · F ${fmt(e.fat)}</div>
+      </div>
+      <button data-edit="${i}">Edit</button>
+      <button data-del="${i}">Remove</button>
+    </div>`;
+  }).join("") : '<div class="empty">Nothing logged yet today.</div>';
 
   $("diary").querySelectorAll("button[data-del]").forEach(b =>
-    b.addEventListener("click", () => { Scan.removeEntry(+b.dataset.del); renderToday(); }));
+    b.addEventListener("click", () => { Scan.removeEntry(+b.dataset.del); editingRow = null; renderToday(); }));
+
+  $("diary").querySelectorAll("button[data-edit]").forEach(b =>
+    b.addEventListener("click", () => { editingRow = +b.dataset.edit; renderToday(); }));
+
+  $("diary").querySelectorAll("button[data-cancel]").forEach(b =>
+    b.addEventListener("click", () => { editingRow = null; renderToday(); }));
+
+  $("diary").querySelectorAll("button[data-save]").forEach(b =>
+    b.addEventListener("click", () => {
+      const i = +b.dataset.save;
+      const num = (el, fb) => { const v = Number($(el).value); return Number.isFinite(v) ? v : fb; };
+      const cur = Scan.dayEntries()[i];
+      Scan.updateEntry(i, {
+        name: $("rName" + i).value.trim() || cur.name,
+        calories: num("rKcal" + i, cur.calories),
+        protein: num("rP" + i, cur.protein),
+        carbs: num("rC" + i, cur.carbs),
+        fat: num("rF" + i, cur.fat)
+      });
+      editingRow = null;
+      renderToday();
+      setStatus("Updated.");
+    }));
 }
 
 loadSettings();

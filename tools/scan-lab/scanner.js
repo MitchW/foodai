@@ -105,6 +105,19 @@ const NUTRIENTS = [
   ["folate","µg"],["omega_3","g"]
 ];
 
+/* --------------------------- user context --------------------------- */
+// Verbatim from analyzeFood(image:description:) in the shipped app. A photo
+// cannot show what is inside an opaque shaker, how much oil went in the pan,
+// or whether a shake was mixed with milk or water — this is how the user
+// supplies what the camera could not see.
+function withContext(prompt, description) {
+  const d = String(description || "").trim();
+  if (!d) return prompt;
+  return prompt +
+    "\n\nAdditional context from the user about this meal: " + d +
+    "\nUse this context to improve accuracy of identification, portion size, and nutrition estimates.";
+}
+
 /* --------------------------- storage --------------------------- */
 // Both pages share one origin, so they share one diary and one API key.
 const DEFAULT_GOAL_KCAL = 1500;   // kcal, not kJ
@@ -188,6 +201,14 @@ function logEntry(src, source) {
     source,
     at: new Date().toISOString()
   }]);
+  LS.set("scanlab.day", d);
+}
+
+function updateEntry(idx, patch) {
+  const d = LS.get("scanlab.day", {});
+  const k = todayKey();
+  if (!d[k] || !d[k][idx]) return;
+  Object.assign(d[k][idx], patch);
   LS.set("scanlab.day", d);
 }
 
@@ -363,8 +384,8 @@ global.Scan = {
   DEFAULT_GOAL_KCAL, PROMPTS, MENU_PROMPT, FRIDGE_PROMPT, SCAN_MODES,
   DEFAULT_MODELS, NUTRIENTS, KEY_PLACEHOLDER, LS,
   getConfig, setConfig, getProvider, setProvider, getGoal, setGoal,
-  todayKey, dayEntries, dayTotals, remainingKcal, logEntry, removeEntry,
-  encodeImage, call, extractJSON, parseAnalysis, parseMenu, parseFridge,
+  todayKey, dayEntries, dayTotals, remainingKcal, logEntry, updateEntry, removeEntry,
+  encodeImage, call, withContext, extractJSON, parseAnalysis, parseMenu, parseFridge,
   proteinDensity, rankByFit, fmt, esc
 };
 
