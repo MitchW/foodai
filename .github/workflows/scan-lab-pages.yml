@@ -34,7 +34,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # enablement turns Pages on for the repo the first time this runs, so
+      # there is no manual step in repository settings.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       # Upload only the harness, so index.html lands at the site root.
       - uses: actions/upload-pages-artifact@v3
