@@ -642,8 +642,12 @@ function renderToday() {
 // Nothing is stored server-side; the meals travel in the URL. Always confirms
 // first, because a link is something someone else can send you.
 function handleImportLink() {
-  const raw = new URLSearchParams(location.search).get("import");
+  const params = new URLSearchParams(location.search);
+  const raw = params.get("import");
   if (!raw) return;
+  // replace=1 swaps the whole saved list rather than appending, so re-sending a
+  // corrected plan does not leave the superseded version sitting alongside it.
+  const replace = params.get("replace") === "1";
   history.replaceState(null, "", location.pathname);   // never re-import on refresh
 
   const { meals, errors } = Scan.parseMealPlan(raw);
@@ -651,14 +655,19 @@ function handleImportLink() {
     setStatus("That import link had nothing readable in it." + (errors.length ? " " + esc(errors[0]) : ""), true);
     return;
   }
+  const existing = Scan.savedMeals().length;
   const summary = meals.map(m => `• ${m.name} — ${Math.round(m.calories)} kcal, ${m.protein}g protein`).join("\n");
-  if (!confirm(`Add ${meals.length} meal${meals.length === 1 ? "" : "s"} to your saved meals?\n\n${summary}`)) {
+  const head = replace && existing
+    ? `Replace your ${existing} saved meal${existing === 1 ? "" : "s"} with these ${meals.length}?`
+    : `Add ${meals.length} meal${meals.length === 1 ? "" : "s"} to your saved meals?`;
+
+  if (!confirm(`${head}\n\n${summary}`)) {
     setStatus("Import cancelled.");
     return;
   }
-  meals.forEach(Scan.saveMeal);
+  Scan.importMealPlan(raw, replace);
   renderSaved();
-  setStatus(`Added ${meals.length} saved meal${meals.length === 1 ? "" : "s"}.` +
+  setStatus(`${replace ? "Replaced with" : "Added"} ${meals.length} saved meal${meals.length === 1 ? "" : "s"}.` +
             (errors.length ? ` Skipped ${errors.length}.` : ""));
 }
 
