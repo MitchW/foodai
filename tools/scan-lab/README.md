@@ -75,6 +75,57 @@ the only sensible suggestion against a blown budget is the smallest thing availa
 Set a daily calorie goal in the Today card to drive all of this. Anything you log from a
 menu or fridge result lands in the same day total as your meal scans.
 
+## Correcting a result
+
+A photo cannot show what is inside an opaque shaker, how much oil went into the pan, or
+whether a shake was mixed with milk or water. Two ways to fix an estimate:
+
+- **"Anything it couldn't see?"** — type a note and re-estimate. This reuses the shipped
+  app's own mechanism: `analyzeFood(image:description:)` appends the note to the prompt,
+  and the wording here is copied verbatim from the Swift source. The model redoes the
+  arithmetic with the missing facts. In practice a protein shake goes from ~180 kcal
+  (powder only, guessed) to ~430 kcal once you say "2 scoops whey, 300ml semi-skimmed".
+- **"Or correct the numbers yourself"** — edit name, calories, and each macro directly.
+  Manual values win over the model's when logged. Cheaper than a second API call when you
+  already know the answer.
+
+Anything already in the diary has the same editor behind its **Edit** button.
+
+## Saved meals
+
+Repeat items shouldn't cost an API call and a retyped note every day. Save any result as a
+repeat — it keeps whatever corrections you made, not the model's raw numbers — then log it
+in one tap with **zero network calls**. Saved meals carry a type (breakfast / lunch /
+dinner / snack / any time) and the list filters by it.
+
+### Importing a plan
+
+Paste under the gear, one meal per line:
+
+```
+breakfast | Overnight oats | 420 | 32 | 48 | 10
+lunch     | Chicken salad  | 430 | 41 | 18 | 21
+snack     | Protein shake  | 430 | 43 | 22 | 12
+```
+
+`type | name | kcal | protein | carbs | fat`. The type is optional, trailing macros may be
+omitted, `#` starts a comment, and a JSON array is accepted as-is with common key aliases
+(`kcal`/`cals`, `p`/`c`/`f`, `category`/`meal_type`).
+
+Each line picks **one** separator — pipe, then tab, then comma — rather than splitting on
+all three. That matters: a name like `Macro Shake + ½ scoop Macro Mike, milk` contains a
+comma, and splitting on every separator at once would read the calories from the wrong
+column. Unparseable lines are reported with their line number and skipped, so a
+half-broken paste tells you which half broke instead of silently losing meals.
+
+### Import links
+
+`app/?import=<url-encoded plan>` adds meals from a link, so a plan can be handed to a phone
+without retyping. Nothing is stored server-side — the meals travel in the URL itself. The
+page always confirms first, listing exactly what will be added, because a link is something
+someone else can send you; and the parameter is stripped immediately so a refresh cannot
+import the same plan twice.
+
 ## Running it on your phone (GitHub Pages)
 
 `.github/workflows/scan-lab-pages.yml` publishes this folder as the site root, so the
@@ -154,6 +205,38 @@ by CORS depending on your account and network.
   drinks, tossed dressing, whole cake vs one slice, half-eaten plates, non-Western
   dishes, and a not-food control to test hallucination.
 
+## Measured findings
+
+One live run against real Gemini, using the shipped prompt on a single food photo (a
+yogurt bowl with blueberries, granola, and honey) for which the app's own marketing
+screenshot records what it answered:
+
+| Source | kcal | protein | carbs | fat | weight |
+| --- | --- | --- | --- | --- | --- |
+| Shipped app, per its own screenshot | 380 | 14 g | 52 g | — | ~280 g |
+| `gemini-3.5-flash-lite` (the app's default) | 320 | 14 g | 48 g | 8.5 g | 300 g |
+| `gemini-3.5-flash` | 290 | 18.3 g | 37.8 g | 7.2 g | 250 g |
+
+**Model choice dominates.** 290–380 kcal for one identical photo is a 31% spread, and the
+app has no food database or custom vision model for photos — accuracy is whatever model
+you point it at. Its default is the cheapest tier.
+
+**Run-to-run variance is not the problem.** Three consecutive `flash-lite` runs returned
+byte-identical numbers. Rescanning the same plate will not give you a different answer;
+switching models will.
+
+**The micronutrients are fabricated.** The prompt says "use null for any nutrient you
+cannot estimate". Across every run the model filled all 27 fields and never once returned
+null — vitamin K 15, folate 20, omega-3 0.2, magnesium 40 — all suspiciously round. Those
+are recalled typical values for "yogurt bowl", not measurements from pixels. Trust the four
+macros; treat the rest of the panel as decoration.
+
+**Where photo estimation cannot work at all.** Opaque containers are unwinnable: milk vs
+water in a shaker is roughly a 150 kcal swing, one scoop vs two another 120, and the
+information simply is not in the image. The same applies to cream in a curry, oil in a pan,
+and syrup in a coffee. This is why the note-and-re-estimate path exists, and why barcode
+and nutrition-label reading beat photo estimation whenever they are available.
+
 ## Deliberate limitations
 
 Not reproduced from the app: multi-image analysis, barcode → Open Food Facts lookup, the
@@ -168,7 +251,25 @@ will always beat all three of these modes.
 
 ## Tests
 
-There is no test runner wired up; the page was verified end to end in headless Chromium
-with a mocked provider, covering prompt fidelity for all three modes, the 1600px/0.8
-encoding, fenced-JSON parsing, null nutrient handling, required-field rejection, both
-ranking branches, logging and removal, and `localStorage` persistence.
+There is no test runner wired up. Both pages were verified end to end in headless
+Chromium, driving the real UI with a mocked provider, covering:
+
+- prompt fidelity for all three modes, and that a first scan carries **no** user context
+  while a re-estimate carries the shipped app's exact wording
+- the 1600px / JPEG 0.8 encoding
+- fenced-JSON parsing, null nutrient handling, required-field rejection
+- both ranking branches — protein density when something fits, least overshoot when
+  nothing does
+- manual edits winning over model values, diary row edit, and cancel leaving the stored
+  row untouched
+- saved meals: saving does not log, one-tap log issues **zero** API calls, type filtering,
+  deletion
+- plan import: pipes, tabs, commas, JSON, key aliases, comments, malformed JSON, and
+  names containing commas; bad lines reported with line numbers
+- import links: confirm contents, decline saving nothing, URL stripped, refresh not
+  double-importing
+- `localStorage` persistence across reload, and both colour schemes
+
+One live end-to-end run was also done against real Gemini rather than a mock, which is
+where the cross-model spread and the fabricated-micronutrient behaviour documented above
+were measured.
